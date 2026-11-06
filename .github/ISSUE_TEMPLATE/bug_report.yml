@@ -1,0 +1,48 @@
+name: Bug report
+description: Something does not work as documented
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never paste access or refresh tokens, emails, project ids or raw API dumps. Issues are public.
+        Leaked a token? See [SECURITY.md](https://github.com/predator-1/openclaw-antigravity-oauth/blob/main/SECURITY.md#if-a-token-leaks).
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      description: Output of `openclaw plugins inspect openclaw-antigravity-oauth --runtime`
+    validations:
+      required: true
+  - type: input
+    id: openclaw-version
+    attributes:
+      label: OpenClaw version
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and architecture
+      placeholder: linux/amd64
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Include the command or model, what you expected and what you got.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Redacted. See [troubleshooting](https://github.com/predator-1/openclaw-antigravity-oauth/blob/main/docs/troubleshooting.md) first.
+      render: text
+  - type: checkboxes
+    id: redacted
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed tokens, emails and project ids from everything above.
+          required: true

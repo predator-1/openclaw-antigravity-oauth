@@ -1,0 +1,65 @@
+name: CI
+
+# Hermetic by design: no repository secrets, no network calls from tests (the test
+# bootstrap rejects unmocked fetch, non-loopback sockets and DNS), and the live
+# integration smoke test never runs here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # Superseded pull-request runs are cancelled; pushes to main always finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-and-test:
+    name: build & test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      # Actions are pinned to full commit SHAs; Dependabot (.github/dependabot.yml) bumps them.
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run check
+
+      - name: Build and verify release package shape
+        # dist/ is build output (not committed); this builds it and checks the npm-pack
+        # tarball (compiled entry + manifest present, version tracks agy CLI_VERSION).
+        run: npm run verify:dist
+
+      - name: Run hermetic test suite
+        run: npm test
+
+      - name: Guard against committed OAuth tokens
+        # Catches Google access tokens (ya29.), refresh tokens (1//0) and JWTs (eyJ...).
+        # User tokens must never be committed.
+        run: |
+          if git grep -nE 'ya29\.[A-Za-z0-9_-]{20,}|1//0[A-Za-z0-9_-]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}' -- . ':!test/'; then
+            echo "::error::Possible OAuth token or JWT committed (see matches above)"
+            exit 1
+          fi

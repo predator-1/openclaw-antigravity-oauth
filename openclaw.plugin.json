@@ -1,0 +1,66 @@
+{
+  "id": "openclaw-antigravity-oauth",
+  "name": "Antigravity OAuth",
+  "description": "OpenClaw provider plugin for Antigravity subscription (OAuth)",
+  "categories": [
+    "models"
+  ],
+  "providers": [
+    "antigravity"
+  ],
+  "modelCatalog": {
+    "discovery": {
+      "antigravity": "refreshable"
+    }
+  },
+  "contracts": {
+    "usageProviders": [
+      "antigravity"
+    ],
+    "mediaUnderstandingProviders": [
+      "antigravity"
+    ],
+    "imageGenerationProviders": [
+      "antigravity"
+    ],
+    "webSearchProviders": [
+      "antigravity-search"
+    ],
+    "webFetchProviders": [
+      "antigravity-fetch"
+    ]
+  },
+  "mediaUnderstandingProviderMetadata": {
+    "antigravity": {
+      "capabilities": [
+        "image",
+        "audio",
+        "video"
+      ],
+      "autoPriority": {
+        "image": 90,
+        "audio": 90,
+        "video": 90
+      },
+      "nativeDocumentInputs": [
+        "pdf"
+      ]
+    }
+  },
+  "activation": {
+    "onStartup": true,
+    "onProviders": [
+      "antigravity"
+    ],
+    "onCommands": [
+      "models"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false
+  },
+  "autoEnableWhenConfiguredProviders": [
+    "antigravity"
+  ]
+}

@@ -1,0 +1,20 @@
+# Keeps the SHA-pinned GitHub Actions (and dev dependencies) current.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      # Types must track the oldest supported runtime (engines.node >=22).
+      # Raise together with engines and the CI matrix.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]

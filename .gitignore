@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Workspace scratch & temporary dumps
+.tmp/
+
+# OS & editor files
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Environment & credentials (never commit tokens or personal identifiers)
+.env
+.env.*
+*.pem
+*.key
+*credentials*.json
+*token*.json
+
+# Build output (compiled in CI / release workflow; never committed)
+dist/
+*.tgz
+SHA256SUMS

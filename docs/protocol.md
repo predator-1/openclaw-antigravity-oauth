@@ -1,0 +1,141 @@
+# Upstream protocol
+
+Verified facts about the Antigravity backend. Host: `daily-cloudcode-pa.googleapis.com`. All probes used the user's own subscription login. New findings go here (or in the matching topic file) with the date and the evidence; there is no separate notes file.
+
+## Endpoints (`DEFAULT_ENDPOINTS`, `src/constants.ts`)
+
+| purpose | endpoint |
+|---|---|
+| device code / auth / token / userinfo | `oauth2.googleapis.com/device/code`, `accounts.google.com/o/oauth2/v2/auth`, `oauth2.googleapis.com/token`, `www.googleapis.com/oauth2/v1/userinfo` |
+| eligibility, project | `POST v1internal:loadCodeAssist` |
+| models | `POST v1internal:fetchAvailableModels` |
+| usage | `POST v1internal:retrieveUserQuotaSummary`, `POST v1internal:retrieveUserQuota` (`{"project"}`) |
+| chat, search, image, media | `POST v1internal:streamGenerateContent?alt=sse` |
+
+## Client identity
+
+- `User-Agent: antigravity/cli/<CLI_VERSION> <os>/<arch>` (`buildAgyUserAgent` / `mapAgyOsArch`). Tokens follow Go: `win32`→`windows`, `sunos`→`solaris`, `x64`→`amd64`, `ia32`→`386`; any other value as reported; empty or non-string → `unknown`. Always a non-empty string; never throws. There is one `CLI_VERSION` and no per-host version or fallback to another platform's UA. This identity returns all 3 quota groups (5 windows).
+- Decision (2026-11-06): agy ships one version for every OS/arch at the same time, and compared fingerprint fields are identical across platforms (agy 1.5.1 `darwin-arm64` vs `linux-x64` baselines differed only in `platform`, `binaryFormat`, and `binarySha256`; 1.5.2 dry-runs on darwin-arm64 and linux-x64 reported the same protocol diff). The plugin therefore keeps one shared baseline (`upstream/agy-fingerprint.json`) and tells the truth about the host OS/arch only in the User-Agent. That is the only place OS/arch leave the plugin: every Antigravity request sets it via `buildAntigravityHeaders`; request bodies have no platform/OS field (only `ideType: "ANTIGRAVITY"` in subscription/catalog `metadata`); OAuth token requests send no UA. `src/` never reads `upstream/`.
+- Linux box check (2026-11-06): On linux-x64 from then-current `main` (plugin still targeting agy 1.5.1), `npm ci`, `npm run build`, then `buildAgyUserAgent()` from `dist/constants.js` returned `antigravity/cli/1.5.1 linux/amd64`. Dry `npm run sync:upstream -- --json` exited 20 `REVIEW_NEEDED`; `storedVersion` 1.5.1 → `cliVersion` 1.5.2; top-level `changedFields` were `cliVersion`, `latestChangelog`, `googleHosts`, `requestShapeMarkers` (same aggregate names as the 2026-11-06 Mac dry-run). Nested `diff.googleHosts`: `used` unchanged (3 hosts); `other` 21 → 22 (added `5aiplatform.googleapis.com`). Nested `diff.requestShapeMarkers`: 18 → 19 (added `x-goog-upload-url`). Live `npm run test:integration -- --json --model=gemini-3.8-flash` was **not run** on this Linux box: it has no stored OpenClaw Antigravity login (`~/.openclaw` is absent, so the smoke's default `openclaw` auth source would find none). No workaround was used (`--auth-source=agy` was not passed; `~/.gemini` was not read). Integration attempts: 0. Native-Linux per-check pass/skipped/failed results and a usage-window count from a Linux host are therefore unavailable.
+- Maintainer report (2026-11-06): After agy 1.5.2 adoption, the maintainer ran the live check from the Mac with a stored OpenClaw login, forcing the User-Agent header to `antigravity/cli/1.5.2 linux/amd64` (not the Mac's native `darwin/arm64` identity, and not a run on a Linux machine). Results: `fetchAvailableModels` 200 (7 models); `retrieveUserQuotaSummary` and `retrieveUserQuota` 200 with 5 usage windows; `streamGenerateContent` on `gemini-3.8-flash` 200 with a pong reply. That verifies upstream acceptance of the `linux/amd64` User-Agent string. It does not verify native Linux-host execution of the plugin.
+
+- `x-activity-request-id`: fresh UUID v4 on every call (a deliberate choice; opencode-agy-auth sends it only on quota calls; upstream accepts it everywhere).
+- Not sent: `X-Goog-Api-Client`, `Client-Metadata` (agy sends neither).
+- OAuth client: agy's consumer client (prefix `1071006060591`) with the same 5 scopes; `sync:upstream` reports a change.
+
+## Turn envelope
+
+```json
+{ "project": "<projectId>", "model": "<upstream id>",
+  "request": { "contents": [], "systemInstruction": {}, "tools": [], "generationConfig": {} },
+  "requestType": "agent", "userAgent": "antigravity", "requestId": "<uuid>" }
+```
+
+Responses are SSE chunks; candidates are unwrapped from `response.candidates` (`unwrapCandidates`).
+
+- Gemini 3+ requires thought signatures on historical `functionCall` parts. Decision (2026-11-06): the plugin stores the upstream `thoughtSignature` / `thought_signature` from each `functionCall` part on the host tool call **together with `thoughtSignatureModel` (catalog id that produced it)** and sends that value back on Gemini multi-step tool turns only when the replay model matches. When no signature was stored, or the stored producing model differs from the current turn model (failover / model switch), it falls back to `skip_thought_signature_validator`. Applied only for `/^gemini-/i` and `MODEL_PLACEHOLDER_M*`; Claude rejects thought signatures (including the sentinel), so Claude turns never get these fields.
+- Prove (2026-11-06): live multi-step tool probe with real signatures **not run** (no quota / no `~/.gemini` read). Whether OpenClaw persists the extra `thoughtSignature` / `thoughtSignatureModel` fields on `toolCall` blocks is **unverified**; if the host strips them, replay always uses the sentinel (safe, pre-change behavior).
+- Structured output (2026-11-06): when the host supplies `StreamOptions.responseFormat`, Gemini turns add camelCase `generationConfig.responseMimeType` (`application/json`) and, when a schema is present, `generationConfig.responseSchema`. Those JSON names match the public Gemini/Vertex `GenerateContent` request and the proto JSON mappings in the investigated agy 1.5.2 binary (`response_mime_type` → `responseMimeType`, `response_schema` → `responseSchema`; the binary also contains `response_json_schema`). The schema is sanitized with `cleanResponseJsonSchema` (root type preserved). These fields are omitted when the turn already includes function-calling `tools`, because Gemini rejects that combination (`400 INVALID_ARGUMENT: Function calling with a response mime type: 'application/json' is unsupported`). Claude and GPT-OSS turns never get these fields. A live schema request was not run; host-pass evidence lives in [features.md](features.md#structured-output-responseformat).
+- Images in tool results: `functionResponse: { name, response: { output }, parts: [{ inlineData }] }` returns 200.
+- Search: `tools: [{ googleSearch: {} }]`; grounding in `groundingMetadata`.
+- `urlContext` does no live fetch (re-probed 2026-11-02 on `gemini-4-argon-low`, `gemini-3.8-flash-tiered`, `gemini-3-flash`, `gemini-3.5-flash-lite`; alone, with `googleSearch`, with and without the envelope fields): 200, no `urlContextMetadata`, models refuse or invent content.
+- A URL as `fileData: { fileUri, mimeType }` (no tools) is read by `gemini-3-flash` and `gemini-4-argon-low` for JSON/text (verified with a fresh commit SHA); `gemini-3.8-flash-tiered` and `gemini-3.5-flash-lite` do not; `text/html` is rejected with 400. Costs a model turn; not used.
+
+## Model ids (2026-11-02)
+
+- `fetchAvailableModels` lists Argon as `gemini-4-argon-low|medium|high`. Probed 2026-11-02: `MODEL_PLACEHOLDER_M124` returns **404 NOT_FOUND**; `gemini-4-argon-medium` returns a proper 429 with `Resets in …` when the Argon weekly window is empty. Other `MODEL_PLACEHOLDER_*` aliases also returned 404 when sent as upstream ids. As of 2026-11-06 the plugin sends the catalog variants (`gemini-4-argon-<tier>`) and keeps `MODEL_PLACEHOLDER_*` as incoming aliases only.
+- Model ids and the catalog are served at runtime and vary by account; static analysis of `agy` cannot prove what the server returns.
+
+## `fetchAvailableModels` schema (from agy's protos)
+
+- Routing lists: `defaultAgentModelId`, `agentModelSorts`, `commandModelIds`, `tabModelIds`, `imageGenerationModelIds` (`gemini-3.1-flash-image`), `webSearchModelIds` (`gemini-3.5-flash-lite`), `mqueryModelIds`, `commitMessageModelIds`, `deprecatedModelIds`, `audioTranscriptionModelIds` (`models/proactive-observer-v10`), `tieredModelIds{flashLite,flash,pro}`. 2026-11-06: that `webSearchModelIds` slug is now also published as a cheap chat model; the plugin's `web_search` provider still sends `gemini-3.8-flash-tiered` (unchanged). See [features.md](features.md#models).
+- Per model: `supportsImages`, `supportsVideo`, `supportsPdf`, `supportedMimeTypes`, `supportsThinking`, `thinkingBudget`/`minThinkingBudget`, `thinkingLevel`, `supportsRawThinking`, `supportsAdaptiveThinking`, `supportsThoughtCirculation`, `maxTokens`, `maxOutputTokens`, **`disabled`** (not `enabled`), `beta`, `preview`, `quotaInfo`.
+- `ThinkingConfig.thinkingLevel` enum: `LOW | MEDIUM | HIGH | MINIMAL | EXTRA_HIGH | MAX`; agy exposes `--effort low|medium|high|xhigh|max`. The plugin maps `xhigh` → `EXTRA_HIGH` and `max` → `MAX` on `gemini-3.8-flash` (2026-11-06). Argon is not in that set. Live acceptance of EXTRA_HIGH/MAX on flash is unverified (no live probe); see [features.md](features.md#reasoning-effort).
+
+## Other `v1internal` RPCs (probed 2026-11-02)
+
+Same host and headers as the quota calls (`buildAntigravityQuotaHeaders`). Used by agy's `read_url_content` tool (`ReadUrlContentHandler.fetchLiveContent`/`fetchViaProxy` → `FetchFromTrawlerCache`; HTML → markdown happens client-side).
+
+| RPC | request → response | notes |
+|---|---|---|
+| `fetchFromTrawlerCache` | `{url, liveFetch}` → `{content}` | `liveFetch:true` fetches live; `false` returns a cached copy or 404 |
+| `rewriteUri` | `{originalUri}` → `{redirectUri}` | returned `{}` for normal URLs |
+| `checkUrlDenylist` | `{url}` → `{isDenied}` | |
+| `checkUrlAntivirus` | `{url}` → `{isClean, reason}` | `reason: "All URLs scanned clean by GAVS"` |
+
+`fetchFromTrawlerCache` facts:
+- Live: a nonce generated at request time came back from `postman-echo.com/get`, `httpbin.org/get`, `httpbin.org/anything/<nonce>` and a Wikipedia URL (0.7–1.7 s); a commit about 40 s old came back from `api.github.com`.
+- Returns the raw body only (HTML, JSON, text): no status, content type or final URL. Redirects are followed; a 1.55 MB page came back whole.
+- Upstream 404/500, PDF, images, binary, bad URLs and pages slower than ~7 s all return an opaque `500 INTERNAL`. `api.github.com` started returning 500 after a few calls (likely upstream rate limiting).
+- The result is reused per exact URL for at least 5 minutes even with `liveFetch:true`; a changed query string forces a refetch.
+- No model quota observed.
+
+## Audio in agy
+
+agy's live dictation (`mic-serve`, `audiotranscribe`) streams microphone audio over the gRPC Live API `google.gca.aicode.v1main.PredictionService/BidiGenerateContent` on `aicode.googleapis.com` to `models/proactive-observer-v10`. It needs the `…/auth/aicode` scope, which the plugin does not request. The plugin transcribes recorded audio by sending the whole file inline to `gemini-3.8-flash-tiered` instead.
+
+## Inline audio size (2026-11-06)
+
+- Recorded audio is sent as one `inlineData` part on `POST v1internal:streamGenerateContent?alt=sse`. There is no chunking.
+- Documented Gemini inline limit is ~20 MB for the whole request. Audio is base64-encoded (×4/3) plus prompt/envelope, so the plugin caps the raw `req.buffer` at `INLINE_AUDIO_MAX_BYTES` = 15 532 032 bytes (~14.81 MiB): `floor((20 MiB − 256 KiB) × 3/4)`. The 20 MiB figure is `INLINE_AUDIO_REQUEST_MAX_BYTES`. Checked before encoding or any network call.
+- Live probes of 5, 15 and 25 MB clips through `transcribeAudio` were **not** run (no live auth, no quota authorization, no large fixtures). The upstream cutoff is unverified; do not treat the base64-aware raw cap as a measured `v1internal` result.
+- No `v1internal` media upload RPC in the agy 1.5.1 or 1.5.2 fingerprints: used RPCs stay the five plugin endpoints; the only upload-named other RPC is still `uploadPerformanceProfile` (client telemetry, not media). There is no `uploadFile` / Files API style method. The `x-goog-upload-*` markers and unused host `scotty.googleapis.com` belong to aicode remote-project upload ([agy 1.5.2](#agy-152-2026-11-06)), not a probed audio upload API. `fileData.fileUri` on this RPC reads some HTTP URLs (JSON/text), not an uploaded blob handle (see [Turn envelope](#turn-envelope)). Live dictation is a separate gRPC path and stays out of scope ([features.md](features.md#out-of-scope-by-decision)).
+
+## agy 1.5.2 (2026-11-06)
+
+Investigation only; the plugin was not adopted onto 1.5.2 in this change. Evidence: installed `agy --version` = `1.5.2` (`~/.local/bin/agy`, linux-x64, SHA-256 `da1751e7658469fa80bf36eda2c60ee61216d8e42b735a184382ba31d1f6b88e`); `npm run sync:upstream -- --json` against `upstream/agy-fingerprints/linux-x64.json` (1.5.1) returned verdict 20 `REVIEW_NEEDED` on 2026-11-06. GitHub `google-antigravity/antigravity-cli` latest release reported `1.5.2` (`semverComparison: equal`).
+
+Changed fingerprint fields: `cliVersion` `1.5.1` → `1.5.2`; `binarySha256` `72738cf0445918483956a5f0da33abdfcfb21a12dd9a421fd57d063782826669` → `da1751e7…` (full digest above); `latestChangelog`; `googleHosts.other` gained `5aiplatform.googleapis.com`; `requestShapeMarkers` gained `x-goog-upload-url`. Unchanged: used RPCs (`fetchAvailableModels`, `loadCodeAssist`, `retrieveUserQuota`, `retrieveUserQuotaSummary`, `streamGenerateContent`), used hosts, `rpcNames.other`, `oauthClientPrefixes`, `consumerClientParity`, `oauthScopes`, `subcommands`, `models`, and every previous request-shape marker.
+
+`agy changelog` (1.5.2 heading, read in full): CLI, TUI, sandbox, MCP, plugin-install security, Remote Control, and `--remote-agent` only. The protocol-adjacent bullets are cloud-plugin skills in `--remote-agent` sessions, a fix so PDFs, other binaries, and files larger than about 8 MB upload to a remote project from `/projects` in those sessions, and CJK spacing in live voice dictation (Live API / `mic-serve`; the plugin does not use that path). Nothing in the heading describes a change to the five plugin RPCs, OAuth clients or scopes, the chat envelope, quota windows, or thinking levels.
+
+`agy models` (2026-11-06, this account; the command may fetch the live list) printed the same 13 variants as the 1.5.1 fingerprint `models` field: `gemini-4-argon-{low,medium,high}`, `gemini-3.8-flash-{low,medium,high}`, `claude-opus-5-5-{low,medium,high}`, `claude-sonnet-5-5-{low,medium,high}`, `gpt-oss-120b-medium`. That matches the catalog the plugin already publishes ([features.md](features.md#models)); no new chat model ids. Static analysis of `agy` still cannot prove what `fetchAvailableModels` returns for another account.
+
+### `x-goog-upload-url`
+
+Same Google resumable-upload header family as the 1.5.1 markers (`X-Goog-Upload-Command`, `X-Goog-Upload-Protocol` with `const:"resumable"`, `X-Goog-Upload-Header-Content-Length`, `X-Goog-Upload-Header-Content-Type`, `X-Goog-User-Project`). The lowercase `x-goog-upload-url` marker is new relative to the 1.5.1 baseline (the 1.5.1 binary was not kept on this machine; the comparison is the committed fingerprint). Neighbors in the 1.5.2 binary, static strings only:
+
+- `uploadProjectFile` is adjacent to `X-Goog-Upload-URL` in the string table.
+- Error text: `uploadProjectFile Scotty start response missing X-Goog-Upload-URL`.
+- Go symbols: `UploadRemoteAgentProjectFileScotty`, `validateSameOriginUploadURL`, `IsScottyStartError`.
+- Protobuf `google.gca.aicode.v1main.UploadProjectFile` / `UploadProjectFileRequest` / `UploadProjectFileResponse`, unused host `scotty.googleapis.com`, HTTP path `/{$api_version}/remote:uploadProjectFile`.
+
+That is the aicode remote-project file upload used by `--remote-agent` `/projects`, which matches the 1.5.2 changelog upload fix. It is not a `v1internal` media-upload RPC and is not on the plugin's request path (the plugin does not request the `aicode` scope). No plugin change.
+
+### `5aiplatform.googleapis.com`
+
+Not a reachable host. Three hits, all protobuf resource-type annotations `aiplatform.googleapis.com/EnvironmentTemplateRevision` (53 bytes) on `google.cloud.aiplatform.v1beta1` `RemoteEnvironment` fields (`template_revision`, `resolved_template_revision`, `catalog_base`). The length prefix before that string is `0x35` (ASCII `5`). `analyzeBinary` in `scripts/sync-upstream-vars.js` walks back through `[a-z0-9.-]` from `.googleapis.com` and accepts a previous byte of `0x0a` (protobuf length-delimited tag), so it records `5aiplatform.googleapis.com`. Unused-host extraction noise next to the already-listed `aiplatform.googleapis.com`. The descriptors belong to remote-environment / cloud-plugin templates, not a plugin endpoint.
+
+### Plugin surface
+
+No fingerprint or changelog evidence that 1.5.2 changes what the plugin sends or relies on: the five used RPCs, used Google hosts, OAuth client prefixes and consumer-client parity, the five plugin scopes, envelope identity markers (`ideType`, `ANTIGRAVITY`, …), or the model ids the plugin publishes. Thinking-level names already documented (`thinkingLevel`, `EXTRA_HIGH`, `MINIMAL`, …) are still present in the binary; quota RPCs are unchanged. Live quota lookups and live turns were not run.
+
+Verdict: no plugin code change is needed for 1.5.2. Adoption (`CLI_VERSION` 1.5.2, plugin `1.5.200`, release-table row, baseline rewrite through the sync script) is a separate issue after the shared baseline.
+
+## Request sanitization
+
+Upstream parses tool schemas into protobuf and rejects type arrays and unions with `400 INVALID_ARGUMENT: Proto field is not repeating, cannot start list`. `cleanJsonSchema` (applied to the v1internal envelope and to OpenAI-style `wireTools`):
+
+1. `type: ["x", "null"]` → `type: x, nullable: true`.
+2. `anyOf`/`oneOf` with a null branch → the non-null branch, `nullable: true`.
+3. Other unions → first viable branch, keeping the parent description.
+4. Non-string enum values → strings, deduplicated.
+5. Missing `type` → inferred (`object` from properties, `array` from items, `string` from enum), default `string`.
+
+Tool names must match `^[a-zA-Z_][a-zA-Z0-9_]{0,63}$`. `ToolNameMapper.toSafeName` replaces invalid characters with `_`, prefixes `_` before a leading digit, resolves collisions with `_1`, `_2` (base truncated to stay within 64), and `toOriginalName` restores the host name. The native-tool allowlist checks the original name.
+
+## Errors
+
+- `extractErrorSummary` reduces Google JSON errors to `HTTP <status> <STATUS>: <message>`.
+- 429 (`classifyGoogleRpc429`), only `ErrorInfo` with domain matching `cloudcode|cloudaicompanion`:
+  - `QUOTA_EXHAUSTED`: terminal; reset from `quotaResetTimeStamp`, `quotaResetDelay` or `Resets in …`.
+  - `RATE_LIMIT_EXCEEDED`, `MODEL_CAPACITY_EXHAUSTED`: transient; delay from `RetryInfo.retryDelay` or `Please retry in Xs`, clamped to 100 ms–10 s, 2 attempts.
+- Argon with 0 credits: 429 `RESOURCE_EXHAUSTED` on `gemini-4-argon-*`. The 404 `Requested entity was not found` seen earlier comes from the dead `MODEL_PLACEHOLDER_M124` alias, not from quota (see [Model ids](#model-ids-2026-11-02)).
+- Image models other than `gemini-3.1-flash-image` (`imagen-*`, `gemini-3-pro-image`, `gemini-2.5-flash-image`): 404.
+
+## Quota payloads
+
+- `retrieveUserQuotaSummary`: groups with buckets `{ remainingFraction, resetTime, window | bucketId | displayName }`; window enums vary (`weekly`/`WEEKLY`, `5h`/`FIVE_HOUR`) and are normalized.
+- The app shows remaining as `ceil(remainingFraction * 100)`.
+- `retrieveUserQuota`: per-model buckets.
+- `fetchAvailableModels`: ~180 KB with full model definitions; ~26 variants that collapse to the published catalog.

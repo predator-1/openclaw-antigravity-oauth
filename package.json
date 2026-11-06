@@ -1,0 +1,63 @@
+{
+  "name": "openclaw-antigravity-oauth",
+  "version": "1.5.200",
+  "private": true,
+  "description": "OpenClaw provider plugin for the Antigravity subscription",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/predator-1/openclaw-antigravity-oauth.git"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.10.8",
+      "minGatewayVersion": "2026.10.8"
+    }
+  },
+  "scripts": {
+    "prebuild": "node scripts/clean.js",
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "verify:package": "node scripts/verify-package.js",
+    "verify:dist": "npm run build && npm run verify:package",
+    "pretest": "npm run build",
+    "test": "node --import ./test/support/setup.mjs --experimental-strip-types --test test/*.test.ts",
+    "sync:models": "node scripts/sync-models.js",
+    "sync:models:apply": "node scripts/sync-models.js --apply",
+    "sync:models:prune": "node scripts/sync-models.js --apply --prune-static-catalog",
+    "sync:upstream": "node scripts/sync-upstream-vars.js",
+    "sync:upstream:apply": "node scripts/sync-upstream-vars.js --apply",
+    "sync:upstream:check": "node scripts/sync-upstream-vars.js --check",
+    "test:integration": "node scripts/integration-smoke.js",
+    "prepack": "npm run build"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.10.8"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^7.0.2"
+  }
+}

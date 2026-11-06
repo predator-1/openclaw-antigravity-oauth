@@ -48,7 +48,9 @@ export function resolveImageModel(model?: string): { canonicalId: string; upstre
     return { canonicalId: DEFAULT_IMAGE_MODEL, upstreamSlug: DEFAULT_IMAGE_MODEL };
   }
 
-  return { canonicalId: stripped, upstreamSlug: stripped };
+  throw new Error(
+    `Unsupported Antigravity image model "${raw}". Supported model: ${DEFAULT_IMAGE_MODEL}. Check agents.defaults.mediaModels.image.`
+  );
 }
 
 export function mapSizeToImageConfig(size?: string): { aspectRatio?: string; imageSize?: string } | undefined {
@@ -84,6 +86,7 @@ export async function executeAntigravityImageGeneration(
   req: ImageGenerationRequest,
   options: BuildImageProviderOptions = {}
 ): Promise<ImageGenerationResult> {
+  const { canonicalId, upstreamSlug } = resolveImageModel(req.model);
   const endpoints: AntigravityEndpoints = { ...DEFAULT_ENDPOINTS, ...options.endpoints };
   const fetchImpl: FetchLike = options.fetchFn ?? fetch;
 
@@ -141,8 +144,6 @@ export async function executeAntigravityImageGeneration(
       "Antigravity image generation requires active authentication. Please sign in with your Antigravity subscription."
     );
   }
-
-  const { canonicalId, upstreamSlug } = resolveImageModel(req.model);
 
   // 2. Prepare payload
   const inputParts: Array<Record<string, unknown>> = [];
@@ -273,9 +274,9 @@ export async function executeAntigravityImageGeneration(
         } catch {
           // Ignore json parse error
         }
-        throw new Error(`[antigravity] Quota exceeded HTTP 429: ${extractErrorSummary(errorText)}${resetNotice}`);
+        throw new Error(`[antigravity] Quota exceeded HTTP 429 (model ${canonicalId}): ${extractErrorSummary(errorText)}${resetNotice}`);
       }
-      throw new Error(`[antigravity] Image generation failed with HTTP ${response.status}: ${extractErrorSummary(errorText)}`);
+      throw new Error(`[antigravity] Image generation failed with HTTP ${response.status} (model ${canonicalId}): ${extractErrorSummary(errorText)}`);
     }
 
     const responseText = await response.text();

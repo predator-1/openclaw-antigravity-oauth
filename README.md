@@ -25,7 +25,7 @@ openclaw plugins install git:github.com/predator-1/openclaw-antigravity-oauth@re
 openclaw models auth login --provider antigravity --method oauth
 ```
 
-Pin a version with `@v<version>` instead of `@release` (for example `@v1.5.200`).
+Pin a version with `@v<version>` instead of `@release` (for example `@v1.5.201`). A first install asks for capability consent; in a non-interactive shell add `--accept-capabilities` after reviewing what the plugin declares.
 
 ## Update
 

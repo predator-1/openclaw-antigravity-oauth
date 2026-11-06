@@ -8,6 +8,10 @@ agy patch = plugin patch ÷ 100). See [docs/install-and-release.md](docs/install
 
 ## [Unreleased]
 
+## [1.5.201] - 2026-11-07
+
+Targets agy 1.5.2. First public release, with a build provenance attestation; no runtime changes.
+
 ### Added
 
 - Bug report issue template that asks for redacted logs; feature list in the README.
@@ -15,6 +19,8 @@ agy patch = plugin patch ÷ 100). See [docs/install-and-release.md](docs/install
 ### Changed
 
 - The release flow updates the pinned version examples in the README and the install docs.
+- Install docs cover the capability consent a first install asks for (`--accept-capabilities`).
+- Recorded the repository rulesets and how to verify a release attestation.
 
 ## [1.5.200] - 2026-11-06
 

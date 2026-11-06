@@ -12,17 +12,19 @@
 
 ```bash
 openclaw plugins install git:github.com/predator-1/openclaw-antigravity-oauth@release   # follows releases
-openclaw plugins install git:github.com/predator-1/openclaw-antigravity-oauth@v1.5.200 # pinned
+openclaw plugins install git:github.com/predator-1/openclaw-antigravity-oauth@v1.5.201 # pinned
 openclaw plugins inspect openclaw-antigravity-oauth --runtime
 openclaw models auth login --provider antigravity --method oauth
 ```
 
+Finding 2026-11-07 (OpenClaw 2026.10.10, clean state, no GitHub credentials, non-interactive shell): a first `plugins install` stops with `requires capability consent` and installs nothing until it is re-run with `--accept-capabilities`.
+
 Optional tarball install (offline or air-gapped hosts):
 
 ```bash
-gh release download v1.5.200 -R predator-1/openclaw-antigravity-oauth -p 'openclaw-antigravity-oauth-1.5.200.tgz' -p SHA256SUMS
+gh release download v1.5.201 -R predator-1/openclaw-antigravity-oauth -p 'openclaw-antigravity-oauth-1.5.201.tgz' -p SHA256SUMS
 sha256sum -c --ignore-missing SHA256SUMS      # macOS: shasum -a 256 -c --ignore-missing SHA256SUMS
-openclaw plugins install npm-pack:./openclaw-antigravity-oauth-1.5.200.tgz --force
+openclaw plugins install npm-pack:./openclaw-antigravity-oauth-1.5.201.tgz --force
 ```
 
 `openclaw plugins update` cannot discover newer GitHub Releases for an `npm-pack:` install; reinstall the newer tarball with `--force`.
@@ -78,8 +80,11 @@ Verify a release before installing it (reviewer checklist):
 2. `node scripts/verify-package.js --release-commit=HEAD --parent=<main-sha>` passes.
 3. A local build of `<main-sha>` is byte-identical to the release `dist/` (`diff -r`).
 4. No tokens or emails in `dist/`; release assets pass `shasum -a 256 -c SHA256SUMS`.
+5. Provenance (releases from `v1.5.201` on): `gh attestation verify openclaw-antigravity-oauth-<version>.tgz -R predator-1/openclaw-antigravity-oauth`.
 
 Redo a release: `gh release delete v<version> --yes -R predator-1/openclaw-antigravity-oauth`, then re-run the workflow run.
+
+Rulesets (2026-11-07): `main` takes changes only through a PR with green `build & test (Node 22)` and `(Node 24)`, no force push, no deletion, no bypass. `v*` tags: no deletion, no non-fast-forward; the move to the release commit is a fast-forward. `release`: no deletion only, because each release force-updates it. Repository admins can bypass the last two, which is what moving a tag back for a redo needs.
 
 If rulesets block `GITHUB_TOKEN` from pushing `release` or the tag, add a `RELEASE_PUSH_TOKEN` secret (contents write; workflow scope if GitHub refuses the push for touching `.github/workflows`). A tag push made with that token re-triggers the workflow, which skips because the tag already points at a release commit.
 

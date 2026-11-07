@@ -8,6 +8,10 @@ agy patch = plugin patch ÷ 100). See [docs/install-and-release.md](docs/install
 
 ## [Unreleased]
 
+### Added
+
+- Troubleshooting guidance for the missing Antigravity video-generation provider.
+
 ## [1.5.202] - 2026-11-07
 
 Targets agy 1.5.2. Plugin-only fix.

@@ -45,6 +45,7 @@ Responses are SSE chunks; candidates are unwrapped from `response.candidates` (`
 
 - `fetchAvailableModels` lists Argon as `gemini-4-argon-low|medium|high`. Probed 2026-11-02: `MODEL_PLACEHOLDER_M124` returns **404 NOT_FOUND**; `gemini-4-argon-medium` returns a proper 429 with `Resets in …` when the Argon weekly window is empty. Other `MODEL_PLACEHOLDER_*` aliases also returned 404 when sent as upstream ids. As of 2026-11-06 the plugin sends the catalog variants (`gemini-4-argon-<tier>`) and keeps `MODEL_PLACEHOLDER_*` as incoming aliases only.
 - Model ids and the catalog are served at runtime and vary by account; static analysis of `agy` cannot prove what the server returns.
+- Known-list audit (2026-11-08, [#28](https://github.com/predator-1/openclaw-antigravity-oauth/issues/28)): plain-slug entries use the existing dated [Routing lists observation](#fetchavailablemodels-schema-from-agys-protos), not invented proto aliases. Live smoke 2026-11-08 (OpenClaw login, `antigravity/cli/1.5.3`, PR head `9ee914c`): 21/21 passed; catalog `Discovered 7 models (added: 0, removed: 0)`, so all seven known ids are published and none is new. `gemini-3.1-flash-lite` stays legacy-filtered and is not a known id.
 
 ## `fetchAvailableModels` schema (from agy's protos)
 

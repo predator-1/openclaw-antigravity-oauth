@@ -86,6 +86,38 @@ export function mapSizeToImageConfig(size?: string): { aspectRatio?: string; ima
   };
 }
 
+class ImageCredentialTimeoutError extends Error {}
+
+async function getStoredImageAccessToken(
+  store: AuthProfileStore,
+  endpoints: AntigravityEndpoints,
+  fetchImpl: FetchLike,
+  req: ImageGenerationRequest
+): Promise<string> {
+  req.signal?.throwIfAborted();
+  const controller = new AbortController();
+  const onAbort = (): void => controller.abort(req.signal?.reason);
+  req.signal?.addEventListener("abort", onAbort, { once: true });
+  const timeoutMs = req.timeoutMs ?? DEFAULT_IMAGE_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(
+    new ImageCredentialTimeoutError(`Image generation timed out after ${timeoutMs}ms`)
+  ), timeoutMs);
+  let rejectOnAbort: () => void = () => {};
+  const aborted = new Promise<never>((_resolve, reject) => {
+    rejectOnAbort = () => reject(controller.signal.reason);
+    controller.signal.addEventListener("abort", rejectOnAbort, { once: true });
+  });
+  try {
+    return await Promise.race([
+      getValidAccessToken(store, endpoints, fetchImpl, controller.signal), aborted
+    ]);
+  } finally {
+    clearTimeout(timer);
+    req.signal?.removeEventListener("abort", onAbort);
+    controller.signal.removeEventListener("abort", rejectOnAbort);
+  }
+}
+
 export async function executeAntigravityImageGeneration(
   req: ImageGenerationRequest,
   options: BuildImageProviderOptions = {}
@@ -114,8 +146,14 @@ export async function executeAntigravityImageGeneration(
       const secret = await store.getSecret(PROVIDER_ID);
       if (secret?.accessToken) {
         if (canUseStoredAccessToken(secret)) {
-          accessToken = await getValidAccessToken(store, endpoints, fetchImpl);
-          projectId = secret.projectId || DEFAULT_PROJECT_ID;
+          try {
+            accessToken = await getStoredImageAccessToken(store, endpoints, fetchImpl, req);
+            projectId = secret.projectId || DEFAULT_PROJECT_ID;
+          } catch (error) {
+            if (req.signal?.aborted) throw req.signal.reason;
+            if (error instanceof ImageCredentialTimeoutError) throw error;
+            // Other refresh failures leave host resolution (C) authoritative.
+          }
         }
         // Expired host-managed/static credentials must resolve through the host below.
       }

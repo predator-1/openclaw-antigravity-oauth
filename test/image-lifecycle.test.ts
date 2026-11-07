@@ -291,3 +291,91 @@ describe("image stored credential host boundary", () => {
     });
   }
 });
+
+
+describe("image stored refresh lifetime and fallback", () => {
+  async function expiredStore() {
+    const store = new InMemoryAuthProfileStore();
+    await store.setSecret("antigravity", {
+      accessToken: "expired-fixture", refreshToken: "revoked-fixture", expiresAt: Date.now() - 3600000
+    });
+    return store;
+  }
+
+  for (const stalledBody of [false, true]) {
+    it(`bounds a stalled token ${stalledBody ? "body" : "endpoint"} by timeoutMs`, async () => {
+      const store = await expiredStore();
+      const caller = new AbortController();
+      let tokenSignal: AbortSignal | undefined;
+      let calls = 0;
+      const provider = buildAntigravityImageGenerationProvider({
+        defaultAuthStore: store,
+        loadHostAuth: async () => { assert.fail("timeout must not fall through"); },
+        fetchFn: async (url, init) => {
+          calls++; assert.equal(String(url), DEFAULT_ENDPOINTS.tokenUrl);
+          tokenSignal = init?.signal as AbortSignal;
+          if (!stalledBody) return await new Promise<Response>(() => {});
+          const response = new Response(null);
+          response.json = () => new Promise(() => {});
+          return response;
+        }
+      });
+      await assert.rejects(provider.generateImage({ prompt: "draw a star", timeoutMs: 20, signal: caller.signal }),
+        /Image generation timed out after 20ms/);
+      assert.equal(calls, 1); assert.equal(tokenSignal?.aborted, true);
+      assert.equal(getEventListeners(caller.signal, "abort").length, 0);
+    });
+  }
+
+  it("preserves caller abort reason at a stalled token endpoint and cleans the listener", async () => {
+    const store = await expiredStore();
+    const caller = new AbortController();
+    const reason = new Error("caller cancelled token refresh");
+    let started: () => void = () => {};
+    const tokenStarted = new Promise<void>((resolve) => { started = resolve; });
+    const provider = buildAntigravityImageGenerationProvider({
+      defaultAuthStore: store,
+      loadHostAuth: async () => { assert.fail("abort must not fall through"); },
+      fetchFn: async () => { started(); return await new Promise<Response>(() => {}); }
+    });
+    const pending = provider.generateImage({ prompt: "draw a star", timeoutMs: 1000, signal: caller.signal });
+    const rejected = assert.rejects(pending, (error) => error === reason);
+    await tokenStarted; caller.abort(reason); await rejected;
+    assert.equal(getEventListeners(caller.signal, "abort").length, 0);
+  });
+
+  for (const hostWorks of [true, false]) {
+    it(`falls through after revoked refresh to ${hostWorks ? "working host auth" : "sign-in guidance"} without leaking credentials`, async (t) => {
+      const store = await expiredStore();
+      const messages: string[] = [];
+      t.mock.method(console, "warn", (...args: unknown[]) => { messages.push(args.join(" ")); });
+      let hostCalls = 0;
+      let tokenCalls = 0;
+      let imageCalls = 0;
+      const provider = buildAntigravityImageGenerationProvider({
+        defaultAuthStore: store,
+        loadHostAuth: async () => ({ resolveApiKeyForProvider: async () => {
+          hostCalls++; return hostWorks ? { apiKey: "host-fixture" } : {};
+        } }),
+        fetchFn: async (url, init) => {
+          if (String(url) === DEFAULT_ENDPOINTS.tokenUrl) {
+            tokenCalls++;
+            return new Response(JSON.stringify({ error: "invalid_grant", error_description: "refresh_token=revoked-fixture" }), { status: 400 });
+          }
+          imageCalls++;
+          assert.equal((init?.headers as Record<string, string>).Authorization, "Bearer host-fixture");
+          return imageResponse();
+        }
+      });
+      const pending = provider.generateImage({ prompt: "draw a star" });
+      if (hostWorks) assert.equal((await pending).images.length, 1);
+      else await assert.rejects(pending, (error: Error) => {
+        messages.push(error.message); assert.match(error.message, /requires active authentication/); return true;
+      });
+      assert.equal(hostCalls, 1); assert.equal(tokenCalls, 1); assert.equal(imageCalls, hostWorks ? 1 : 0);
+      for (const message of messages) {
+        for (const value of ["expired-fixture", "revoked-fixture", "host-fixture"]) assert.ok(!message.includes(value));
+      }
+    });
+  }
+});

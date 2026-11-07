@@ -714,7 +714,8 @@ export function canUseStoredAccessToken(credential: AntigravityAuthCredentials):
 export async function refreshOAuthCredential(
   credential: OpenClawOAuthCredential,
   endpoints: AntigravityEndpoints = DEFAULT_ENDPOINTS,
-  fetchImpl: FetchLike = fetch
+  fetchImpl: FetchLike = fetch,
+  signal?: AbortSignal
 ): Promise<OpenClawOAuthCredential> {
   if (!hasUsableRefreshToken(credential.refresh)) {
     throw new Error("Authentication error: missing refresh token for Antigravity credential");
@@ -735,12 +736,16 @@ export async function refreshOAuthCredential(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let response: Response;
     try {
+      signal?.throwIfAborted();
       response = await fetchImpl(endpoints.tokenUrl, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-        body: bodyParams.toString()
+        body: bodyParams.toString(),
+        ...(signal ? { signal } : {})
       });
+      signal?.throwIfAborted();
     } catch (networkErr) {
+      signal?.throwIfAborted();
       lastError = networkErr;
       if (attempt < maxAttempts) {
         const backoffMs = Math.round(200 * Math.pow(2, attempt - 1) + Math.random() * 100);
@@ -762,8 +767,10 @@ export async function refreshOAuthCredential(
           if (typeof errJson.error_description === "string") errDescription = sanitizeError(errJson.error_description);
         }
       } catch {
+        signal?.throwIfAborted();
         // Body not JSON
       }
+      signal?.throwIfAborted();
 
       const detailParts: string[] = [];
       if (errCode) detailParts.push(`error: ${errCode}`);
@@ -802,6 +809,7 @@ export async function refreshOAuthCredential(
     }
 
     const data = (await response.json()) as TokenEndpointResponse;
+    signal?.throwIfAborted();
     if (!data.access_token) {
       throw new Error("Authentication error: token refresh did not return an access token");
     }
@@ -840,9 +848,12 @@ export async function refreshOAuthCredential(
 export async function refreshAccessToken(
   authStore: AuthProfileStore,
   endpoints: AntigravityEndpoints = DEFAULT_ENDPOINTS,
-  fetchImpl: FetchLike = fetch
+  fetchImpl: FetchLike = fetch,
+  signal?: AbortSignal
 ): Promise<AntigravityAuthCredentials> {
+  signal?.throwIfAborted();
   const existing = await authStore.getSecret(PROVIDER_ID);
+  signal?.throwIfAborted();
   if (!existing || !hasUsableRefreshToken(existing.refreshToken)) {
     throw new Error("Authentication error: no stored Antigravity subscription credential");
   }
@@ -859,7 +870,8 @@ export async function refreshAccessToken(
       ...(existing.accountId !== undefined ? { accountId: existing.accountId } : {})
     },
     endpoints,
-    fetchImpl
+    fetchImpl,
+    signal
   );
 
   const updated: AntigravityAuthCredentials = {
@@ -871,6 +883,7 @@ export async function refreshAccessToken(
     ...(existing.projectId !== undefined ? { projectId: existing.projectId } : {})
   };
 
+  signal?.throwIfAborted();
   await authStore.setSecret(PROVIDER_ID, updated);
   return updated;
 }
@@ -878,9 +891,12 @@ export async function refreshAccessToken(
 export async function getValidAccessToken(
   authStore: AuthProfileStore,
   endpoints: AntigravityEndpoints = DEFAULT_ENDPOINTS,
-  fetchImpl: FetchLike = fetch
+  fetchImpl: FetchLike = fetch,
+  signal?: AbortSignal
 ): Promise<string> {
+  signal?.throwIfAborted();
   const existing = await authStore.getSecret(PROVIDER_ID);
+  signal?.throwIfAborted();
   if (!existing || !existing.accessToken) {
     throw new Error("Authentication error: not signed in to Antigravity subscription");
   }
@@ -891,7 +907,7 @@ export async function getValidAccessToken(
       // Managed by host or static token without real refresh token; return as-is
       return existing.accessToken;
     }
-    const refreshed = await refreshAccessToken(authStore, endpoints, fetchImpl);
+    const refreshed = await refreshAccessToken(authStore, endpoints, fetchImpl, signal);
     return refreshed.accessToken;
   }
 

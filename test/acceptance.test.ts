@@ -4046,6 +4046,57 @@ if (args[0] === "models" && args[1] === "list") {
       false,
       "Must fail closed to false when host modelAuth throws"
     );
+    assert.equal(await providerWithStore.isConfiguredAsync?.({ agentDir: "/test/agent/dir" }), true);
+    assert.equal(await providerEmpty.isConfiguredAsync?.({ agentDir: "/test/agent/dir" }), false);
+    assert.equal(await providerWithHostProfile.isConfiguredAsync?.({ agentDir: "/test/agent/dir" }), true);
+    assert.equal(await providerWithHostKey.isConfiguredAsync?.({ agentDir: "/test/agent/dir" }), true);
+    assert.equal(await providerAbsent.isConfiguredAsync?.({ agentDir: "/test/agent/dir" }), false);
+    assert.equal(await providerThrowing.isConfiguredAsync?.({ agentDir: "/test/agent/dir" }), false);
+  });
+
+  it("Async image readiness: prefers host async APIs, passes prompt-free options, and fails closed", async () => {
+    const cfg = {};
+    const agentDir = "test-agent";
+    for (const scenario of ["profile", "key", "absent", "store-error", "key-error"] as const) {
+      const store = {};
+      let syncCalls = 0;
+      let keyCalls = 0;
+      const deprecated = () => {
+        syncCalls++;
+        throw new Error("Deprecated sync method must not run");
+      };
+      const provider = buildAntigravityImageGenerationProvider({
+        modelAuth: {
+          ensureAuthProfileStore: deprecated,
+          isProviderApiKeyConfigured: deprecated,
+          ensureAuthProfileStoreAsync: async (directory, options) => {
+            await Promise.resolve();
+            assert.equal(directory, agentDir);
+            assert.deepEqual(options, { readOnly: true, allowKeychainPrompt: false });
+            if (scenario === "store-error") throw new Error("Store unavailable");
+            return store;
+          },
+          listProfilesForProvider: (actualStore, providerId) => {
+            assert.equal(actualStore, store);
+            assert.equal(providerId, PROVIDER_ID);
+            return scenario === "profile" ? [{}] : [];
+          },
+          isProviderApiKeyConfiguredAsync: async (params) => {
+            await Promise.resolve();
+            keyCalls++;
+            assert.deepEqual(params, {
+              provider: PROVIDER_ID, cfg, agentDir, store,
+              readOnly: true, allowKeychainPrompt: false
+            });
+            if (scenario === "key-error") throw new Error("Key lookup unavailable");
+            return scenario === "key";
+          }
+        }
+      });
+      assert.equal(await provider.isConfiguredAsync?.({ cfg, agentDir }), scenario === "profile" || scenario === "key");
+      assert.equal(syncCalls, 0, "Async APIs take precedence, even when they reject");
+      assert.equal(keyCalls, scenario === "profile" || scenario === "store-error" ? 0 : 1);
+    }
   });
 
   it("34. OAuth refresh: an expired stored credential with successful mocked token endpoint yields a request-ready credential and preserves refresh token and identity", async () => {

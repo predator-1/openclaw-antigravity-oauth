@@ -21,7 +21,7 @@ Layout: `src/` plugin ([module map](docs/architecture.md#src-module-map)), `scri
 - Name a branch `release/*` (breaks the `release` ref).
 - Commit `dist/` to `main`, bump the version in a feature PR, or commit tokens, emails, project ids or raw API dumps.
 - Use a personal email in commits (`predator-1@users.noreply.github.com`).
-- Read or write `~/.gemini`, except the smoke's opt-in `--auth-source=agy` token read. Run `agy` only with `--version|--help|changelog|models`.
+- Read or write `~/.gemini`, except the smoke's opt-in `--auth-source=agy` token read. Run `agy` only with `--version|--help|changelog|models` or `-p|--print` (uses quota; never with `--dangerously-skip-permissions`).
 - Change the OAuth client constants or the CLI client identity in `src/constants.ts`.
 - Spawn binaries, open browsers or attach native tools from `src/`; OpenClaw executes every tool.
 - Change the user's OpenClaw config outside `scripts/sync-models.js`'s owned fields, or files under `~/.openclaw`.

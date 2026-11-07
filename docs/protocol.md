@@ -150,8 +150,8 @@ The original first-probe section above is preserved unchanged. Its matching-404 
 
 #### Provenance and static trace
 
-- Research branch starts at `ff1a2490bb85ce69971c37cbe8f1ea680475f3e2`. Live probes used the existing Mac mini source at `1d79ceb178138a959658034a58feead0aee18cbd`, plugin `1.5.202`, rebuilt before the separately authorized smoke. The probe client remains `antigravity/cli/1.5.2 darwin/arm64`; no identity or runtime update was made.
-- Actual local agy: **1.5.3**, Mach-O arm64, 208900592 bytes, SHA-256 `5e4b545bff4a83a93354fc50c54631cf3e8cd02e1a469087af00929f3fdc4d51`. Earlier box inspection concerned 1.5.2, not this binary. Allowed `--version`, `--help`, and `changelog` were used; no update command. Changelog contains dedicated image-generator-subagent plumbing and media-input fixes, not proof of a video-generation route.
+- Research branch starts at `ff1a2490bb85ce69971c37cbe8f1ea680475f3e2`. Live probes used existing source at `1d79ceb178138a959658034a58feead0aee18cbd`, plugin `1.5.202`, rebuilt before the separately authorized smoke. The probe client remains `antigravity/cli/1.5.2 darwin/arm64`; no identity or runtime update was made.
+- Inspected agy: **1.5.3**, Mach-O arm64, 208900592 bytes, SHA-256 `5e4b545bff4a83a93354fc50c54631cf3e8cd02e1a469087af00929f3fdc4d51`. Allowed `--version`, `--help`, and `changelog` were used; no update command. Changelog contains dedicated image-generator-subagent plumbing and media-input fixes, not proof of a video-generation route.
 - Static Go metadata: 183140 functions. Mach-O's on-disk Go `textStart` is zero before relocation; direct ARM64 call decoding used the `__text` address, not zero. `GetImageGenerationModelIds` belongs to `FetchAvailableModelsResponse` and exposes the image-routing list; the model-selection helper directly calls `cache.(*Cache).Get`. The exact cached-field load connecting this getter to the helper was not reconstructed, so that data-flow link remains unverified. The getter can be inlined: a getter symbol alone is not a demonstrated call edge.
 - Application path: `modelapiccpa.(*Client).GetImageGeneration` → `codeassistclient.(*CodeAssistClient).GetImageGeneration` → `getImageGenerationModelID`, `getModelInfoByModelId`, and `GenerateContent`. `GenerateContent` contains routing branches for CCPA, gateway, AICode, business AICode and Vertex AI; its CCPA branch calls `generateContentFromCCPA` → `marshalCCPARequest` / `postCodeAssistBackendRequest`. The binary also contains `v1internal:generateContent` and `v1internal:streamGenerateContent`. This establishes dedicated image application plumbing, **not** which dynamic branch/host a particular agy turn uses.
 - Additional application image path: `oneharness/internal/tools.(*GenerateImageTool).Execute` calls media reading/saving and `core.CallWithRetry`; `jetski/cortex/handlers/imagegen.(*GenerateImageHandler).Handle` has artifact saving and `generator.RunWithAPIRetry`. These are distinct from linked libraries. The alternative `model_api/backends/geminiapi.(*Client).GetImageGeneration` calls `newGenAIClient`, `imageGenerationModelName` and the GenAI SDK's `Models.GenerateContent`.
@@ -188,32 +188,11 @@ Each row below is one actual HTTP request. Catalog controls are invented RPCs. G
 
 Generation body: `{project, model, request: {contents: [{role: "user", parts: [{text: "Generate a short silent video of a red ball moving left to right on a plain white background."}]}], generationConfig: {responseModalities: ["VIDEO"]}}}`. On daily CCPA, all three named models and the invented model returned identical `404 NOT_FOUND: Requested entity was not found.` This says only that these forms did not distinguish real ids from the control. The first cloudcode generation-shaped request, itself the invented-model control, returned **429 RESOURCE_EXHAUSTED**, `Resource has been exhausted (e.g. check quota).` It gives no positive model/route evidence.
 
-Accounting for this extension: **12 read-only requests + 5 generation-shaped POSTs** (3 named-model candidates, 2 invented-model controls). No 401/403 occurred; 400 is separate from 404; 429 is a quota stop, not an availability verdict. No 2xx generation/operation, polling, video download or file validation occurred. The separately authorized eight-check smoke was not rerun and is not a video probe.
+Accounting for this extension: **12 read-only requests + 5 generation-shaped POSTs** (3 named-model candidates, 2 invented-model controls). No 401/403 occurred; 400 is separate from 404; 429 is a quota stop, not an availability verdict. No 2xx generation/operation, polling, video download or file validation occurred. The maintainer-authorized eight-check smoke completed on 2026-11-07 at **19:21:36 Asia/Nicosia**, from its embedded report timestamp. Authorization was the maintainer's conditional build/one-smoke instruction preceding identification of the correct environment. It preceded this resumed research in the conversation chronology; per-request probe timestamps were not recorded in the sanitized evidence, so exact probe times cannot be established from those artifacts. The later 19:46 CI completion is not a probe timestamp. The smoke was not rerun and contains no video-generation check.
 
-#### Unsent matrix and prompted runs
+#### Interrupted work
 
-The route plan had 19 rows; the first 5 were sent and the remaining 14 below were **not sent**. No host substitution, retry, paid credentials or prompted run followed the 429. These are an audit of the interrupted plan, not a recommendation to retry retired preview ids automatically.
-
-| Host | Path (POST; not sent) | Model id | Control | Result |
-|---|---|---|---|---|
-| `cloudcode-pa.googleapis.com` | `/v1internal:generateContent` | `veo-3.1-fast-generate-preview` | no | NOT SENT: quota stop |
-| `cloudcode-pa.googleapis.com` | `/v1internal:generateContent` | `veo-3.1-generate-preview` | no | NOT SENT: quota stop |
-| `cloudcode-pa.googleapis.com` | `/v1internal:generateContent` | `veo-3.1-lite-generate-preview` | no | NOT SENT: quota stop |
-| `daily-cloudcode-pa.googleapis.com` | `/v1internal/models/veo-research-does-not-exist:predictLongRunning` | `veo-research-does-not-exist` | yes | NOT SENT: quota stop |
-| `daily-cloudcode-pa.googleapis.com` | `/v1internal/models/veo-3.1-fast-generate-preview:predictLongRunning` | `veo-3.1-fast-generate-preview` | no | NOT SENT: quota stop |
-| `cloudcode-pa.googleapis.com` | `/v1internal/models/veo-research-does-not-exist:predictLongRunning` | `veo-research-does-not-exist` | yes | NOT SENT: quota stop |
-| `cloudcode-pa.googleapis.com` | `/v1internal/models/veo-3.1-fast-generate-preview:predictLongRunning` | `veo-3.1-fast-generate-preview` | no | NOT SENT: quota stop |
-| `cloudcode-pa.googleapis.com` | `/v1internal:videoResearchNoSuchVideoRpc` | `veo-3.1-fast-generate-preview` | yes | NOT SENT: quota stop |
-| `cloudcode-pa.googleapis.com` | `/v1internal:predictLongRunning` | `veo-3.1-fast-generate-preview` | no | NOT SENT: quota stop |
-| `cloudcode-pa.googleapis.com` | `/v1internal:generateVideos` | `veo-3.1-fast-generate-preview` | no | NOT SENT: quota stop |
-| `generativelanguage.googleapis.com` | `/v1beta/models/veo-research-does-not-exist:predictLongRunning` | `veo-research-does-not-exist` | yes | NOT SENT: quota stop |
-| `generativelanguage.googleapis.com` | `/v1beta/models/veo-3.1-fast-generate-preview:predictLongRunning` | `veo-3.1-fast-generate-preview` | no | NOT SENT: quota stop |
-| `aiplatform.googleapis.com` | `/v1/projects/<PROJECT>/locations/us-central1/publishers/google/models/veo-research-does-not-exist:predictLongRunning` | `veo-research-does-not-exist` | yes | NOT SENT: quota stop |
-| `aiplatform.googleapis.com` | `/v1/projects/<PROJECT>/locations/us-central1/publishers/google/models/veo-3.1-fast-generate-preview:predictLongRunning` | `veo-3.1-fast-generate-preview` | no | NOT SENT: quota stop |
-
-Planned LRO body (not sent): `instances: [{prompt: "A red ball moves left to right on a plain white background."}]`, `parameters: {sampleCount: 1, durationSeconds: 4, aspectRatio: "16:9"}`; flat CCPA forms additionally carry `project` and `model`. This body has not been accepted by any of these routes. No Vertex region, public-API model id or async polling/delivery contract was validated.
-
-Prompted agy results: **video prompt: NOT RUN; media-tool prompt: NOT RUN**, both because of the mandatory quota stop. There is no agent claim, permission-prompt observation, produced video or tool inventory to report. Public documentation was then read without authenticated traffic; this is not an attempt to resume the stopped matrix.
+The quota stop left 14 of the 19 original route-plan rows unsent and both prompted agy checks unrun. No agent tool inventory, permission-prompt observation or video file was obtained. Unsent plans and proposed commands are tracked only in PR #24, not duplicated here.
 
 #### Public Gemini and Antigravity documentation (read 2026-11-07)
 
@@ -228,24 +207,7 @@ Prompted agy results: **video prompt: NOT RUN; media-tool prompt: NOT RUN**, bot
 
 **Recommendation: keep #7 open; do not implement yet and do not close it as unavailable upstream.** No real/playable video was produced. Matched 404s, vendored SDK symbols, input-media flags and app plan pages cannot establish either route success or global unavailability. Unknowns include a current Omni route/entitlement under this login, valid `listModelConfigs` input, untried endpoint shapes, remote tools, and async polling/delivery/quota behavior.
 
-Maintainer authorization to resume after the quota stop is needed before any remaining live check. Re-scope the old preview-id plan using the current public video docs first; never repeat a sent candidate under the original one-request budget. If a route needs another login, OAuth scope, paid API setup/key or host outside the four-host list, stop that path for separate approval. Browser cookies/web sessions remain excluded.
-
-The two original prompted checks are still pending. Exact proposed invocations (not run), each in its own newly created empty directory:
-
-```sh
-mkdir .tmp/video-research-video-prompt-next && cd .tmp/video-research-video-prompt-next
-"$HOME/.local/bin/agy" -p "Using only a native video-generation tool, generate exactly one short silent video of a red ball moving left to right and save it inside this directory. Do not use shell commands, code, browsers, image generators, plugins, another login, or retries. If no native video-generation tool is available, say so and stop. Do not read other files."
-```
-
-```sh
-mkdir .tmp/video-research-media-tools-next && cd .tmp/video-research-media-tools-next
-"$HOME/.local/bin/agy" -p "Name the built-in image, audio and video generation or understanding tools actually exposed in this session. Distinguish visible tools from general model capabilities. Do not execute tools, generate media, run commands, read files, browse, install anything or log in."
-```
-
-Do not pass any additional agy flag or bypass a permission prompt. These would establish only what the agent exposes/does; an unsupported claim is still not a working route.
-
-Traffic capture: **not performed**. The issue's prerequisite for stage 6 (exhaust stages 1–5 without a route) has not been reached because quota stopped stage 3 and prevented stage 4. No concrete capture command is proposed prematurely as a quota workaround. If the remaining allowed checks are later exhausted, propose a separately reviewed exact capture/redaction command to identify the native tool's host/path and response type, with no credential/payload logging; TLS connection metadata alone cannot prove an HTTP video route. Trust-store changes, private-log reads and raw HTTP dumps are not implicitly authorized.
-
+No playable video or current API entitlement has been established; pending research is tracked in PR #24.
 
 ## Quota payloads
 

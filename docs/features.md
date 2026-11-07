@@ -123,7 +123,7 @@ Image SDK auth errors (2026-11-07, published `openclaw@2026.10.10` `provider-aut
 
 ## Not available upstream
 
-Probed on `v1internal` and not implemented: TTS, embeddings, music. Video generation remains unimplemented: [quota-stopped research and pending proof](protocol.md#extended-research-2026-11-07-quota-stopped); neither a working subscription route nor general upstream unavailability is established. Web fetch through `urlContext` does not work; pages are fetched through `fetchFromTrawlerCache` via `antigravity-fetch` (above).
+Probed on `v1internal` and not implemented: TTS, embeddings, music. Video generation: [dated research](protocol.md#video-generation-probed-2026-11-07). Web fetch through `urlContext` does not work; pages are fetched through `fetchFromTrawlerCache` via `antigravity-fetch` (above).
 
 Video-generation provider errors: [troubleshooting](troubleshooting.md).
 

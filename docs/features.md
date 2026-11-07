@@ -119,6 +119,8 @@ Maintainer-reported installed-build check (2026-11-07, OpenClaw 2026.10.10, isol
 
 Probed on `v1internal` and not implemented: video generation, TTS, embeddings, music. Web fetch through `urlContext` does not work; pages are fetched through `fetchFromTrawlerCache` via `antigravity-fetch` (above).
 
+Video-generation provider errors: [troubleshooting](troubleshooting.md).
+
 ## Plugin stream transport
 
 Decision (2026-11-05, host OpenClaw 2026.10.10): chat turns and utility completions for `antigravity/*` must go through the plugin's `createStreamFn` / `wrapSimpleCompletionStreamFn`, which POST once to `DEFAULT_ENDPOINTS.chatCompletionsUrl` (`v1internal:streamGenerateContent?alt=sse`). The catalog still publishes `api: "openai-completions"` with that full RPC URL as `baseUrl`.

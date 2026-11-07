@@ -1,6 +1,6 @@
 {
   "name": "openclaw-antigravity-oauth",
-  "version": "1.5.201",
+  "version": "1.5.202",
   "private": true,
   "description": "OpenClaw provider plugin for the Antigravity subscription",
   "license": "MIT",

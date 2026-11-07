@@ -14,7 +14,7 @@ Options: `--agy-bin=<path>` (or `AGY_BIN`; default `command -v agy`, usually `~/
 
 ## Guardrails
 
-- Only `agy --version`, `agy --help`, `agy changelog`, `agy models` are ever run. Never `agy update`, `agy agent`, logins, or other subcommands.
+- The sync script runs only `agy --version`, `agy --help`, `agy changelog`, `agy models`. Never `agy update`, `agy agent`, logins, or other subcommands. Prompted runs (`agy -p`) are for manual research, not for this script.
 - Never reads or writes `~/.gemini`, the Keychain or OS token stores (the smoke's opt-in `--auth-source=agy` is the only reader, see [development-and-testing.md](development-and-testing.md#integration-smoke-local-only-real-upstream-uses-quota)).
 - No OpenClaw logins, config changes, gateway restarts or plugin installs.
 - Secrets are never printed or serialized (only a SHA-256 of the client secret); client ids by numeric prefix only.

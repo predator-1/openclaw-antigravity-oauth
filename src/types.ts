@@ -313,6 +313,7 @@ export interface OpenClawCatalogRunContext {
   };
 }
 
+/** Config-schema model entry emitted by OAuth and catalog.run, not authored ModelCatalogModel metadata. */
 export interface OpenClawCatalogModelDefinition {
   id: string;
   name: string;
@@ -333,7 +334,6 @@ export interface OpenClawCatalogModelDefinition {
     supportsReasoningEffort: boolean;
     supportedReasoningEfforts: readonly ReasoningLevel[];
   };
-  tags?: readonly string[];
 }
 
 export type FailoverReason =

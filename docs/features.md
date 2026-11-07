@@ -121,9 +121,9 @@ Image SDK auth errors (2026-11-07, published `openclaw@2026.10.10` `provider-aut
 - `rawUsage` keeps the raw payloads without full model definitions (typically 4–6 KB).
 - Terminal quota on a turn (429 `QUOTA_EXHAUSTED`) streams an in-chat notice with the reset time, countdown, window and an alternative model from the other family, and ends with `stopReason: "stop"`. A model 404 is an unknown-model failure, not quota (the old Argon 404 was the dead `MODEL_PLACEHOLDER_M124` id). Transient 429s (`RATE_LIMIT_EXCEEDED`, `MODEL_CAPACITY_EXHAUSTED`) are retried, then surfaced as a normal error without the notice.
 
-## Not available upstream
+## Not implemented
 
-Probed on `v1internal` and not implemented: TTS, embeddings, music. Video generation: [dated probe](protocol.md#video-generation-probed-2026-11-07). Web fetch through `urlContext` does not work; pages are fetched through `fetchFromTrawlerCache` via `antigravity-fetch` (above).
+Probed on `v1internal` and not implemented: TTS, embeddings, music. Video generation: [no route found through this login in the forms tried](protocol.md#extended-research-2026-11-07-no-route-found-through-this-login); general upstream absence is not established. Web fetch through `urlContext` does not work; pages are fetched through `fetchFromTrawlerCache` via `antigravity-fetch` (above).
 
 Video-generation provider errors: [troubleshooting](troubleshooting.md).
 

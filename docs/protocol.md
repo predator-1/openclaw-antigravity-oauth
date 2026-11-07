@@ -144,6 +144,41 @@ Not available on `v1internal` in the forms tried (client identity `antigravity/c
   - `gemini-3.8-flash-tiered`: 200 with text saying it cannot generate video files.
 - `v1internal:predictLongRunning` and `v1internal:generateVideos`: non-JSON 404, the same as the invented control RPC `probeRpcDoesNotExist`.
 
+### Extended research (2026-11-07): no route found through this login
+
+No video route or file was found through this login in these forms; general upstream absence is **not established**. Sources: [reviewed results and Final probe](https://github.com/predator-1/openclaw-antigravity-oauth/pull/24), [Omni](https://aistudio.google.com/docs/omni), [deprecations](https://aistudio.google.com/docs/deprecations), [Interactions contract](https://aistudio.google.com/api-reference/interactions-api/create-interaction), [Antigravity models](https://antigravity.google/docs/models).
+All runs below: 2026-11-07, client `antigravity/cli/1.5.2`. E1: OpenClaw login, darwin/arm64, plugin 1.5.202. E2: smoke's agy auth source, linux/amd64, default project fallback (not managed; account not recorded). **F: Final probe, 20:41 Asia/Nicosia, maintainer's OpenClaw login, darwin/arm64, plugin 1.5.203, real managed project used; identifier omitted.**
+Hosts: D = `daily-cloudcode-pa.googleapis.com`; C = `cloudcode-pa.googleapis.com`; G = `generativelanguage.googleapis.com`; A = `aiplatform.googleapis.com`.
+Models: O = `gemini-omni-1.2-flash`; X = invented `gemini-omni-research-does-not-exist`; Y = invented `veo-research-does-not-exist`; V = `veo-3.1-fast-generate-preview`, `veo-3.1-generate-preview`, `veo-3.1-lite-generate-preview`.
+One table of **35 actual requests**; grouped rows retain counts. O/X means one request per model per listed run; D/C means one per host unless both bodies are specified. Controls are identified explicitly.
+
+| Run | Host | Path (POST) | Model / control | Requests | Result |
+|---|---|---|---|---|---|
+| E2,F | D | `/v1internal:retrieveUserQuotaSummary` | — | 2 | 200; five nonempty windows each; F remaining 0.645–0.989 |
+| E1,E2,F | D | `/v1internal:fetchAvailableModels` | — | 3 | 200; 26 models each; F: no omni/veo-/interaction string or video routing key; `imageGenerationModelIds: ["gemini-3.1-flash-image"]` |
+| E1 | C | `/v1internal:fetchAvailableModels` | — | 1 | 200; 26 models, no veo string/video routing list |
+| E1 | D,C | `/v1internal:listModelConfigs` | — | 4 | 400 INVALID_ARGUMENT; `{project}` and `{}` each once per host |
+| E1 | D,C | `/v1internal:listExperiments` | — | 2 | 200; experimentIds and flags; video/veo field-name scan negative, flag-value semantics unresolved |
+| E1 | D,C | `/v1internal:fetchAdminControls` | — | 2 | 200; empty object |
+| E1 | D,C | `/v1internal:videoResearchNoSuchRpc` | invented RPC control | 2 | non-JSON 404 |
+| E1 | D | `/v1internal:generateContent` | Y (control) | 1 | 404 NOT_FOUND |
+| E1 | D | `/v1internal:generateContent` | V | 3 | 404 NOT_FOUND each, same as Y |
+| E1 | C | `/v1internal:generateContent` | Y (control) | 1 | 429 RESOURCE_EXHAUSTED |
+| E2,F | D | `/v1internal:generateContent` | O/X (control X) | 4 | 404 NOT_FOUND each, same as control |
+| E2 | D | `/v1beta/interactions` | O/X (control X) | 2 | non-JSON 404 each |
+| E2 | G | `/v1beta/models/gemini-omni-research-does-not-exist:generateContent` | X (control) | 1 | 403 PERMISSION_DENIED; ACCESS_TOKEN_SCOPE_INSUFFICIENT |
+| E2 | A | `/v1beta1/publishers/google/models/{model}:generateContent` | O/X (control X) | 2 | 400 INVALID_ARGUMENT; RESOURCE_PROJECT_INVALID each |
+| E2 | A | `/v1beta/interactions` | O/X (control X) | 2 | non-JSON 404 each |
+| E2 | C | `/v1internal:generateContent` | X (control) | 1 | 429 RESOURCE_EXHAUSTED |
+| F | D | `/v1internal:streamGenerateContent?alt=sse` | O/X (control X) | 2 | 404 NOT_FOUND each, same as control |
+
+F sent **six requests once each**: quota, catalog and four generation/control requests. Generation body: `{project,model,request:{contents,generationConfig:{responseModalities:["VIDEO"]}}}`; a different Omni body may be needed. Equal 404s do not distinguish the real model from an invented one.
+C returned 429 on its **first generation request in both earlier runs**, on invented controls, with no detailed reason, delay or reset while quota summary showed remaining quota. This **looks host-specific, not proven**; the plugin does not use C. No 401 occurred; 400/403/404/429 are distinct, not interchangeable availability verdicts.
+E2 Interactions requests used `store:false,background:false,stream:false`; those paths on D/A are undocumented cross-host hypotheses. `store` is not a generateContent field. G's scope403 does not establish model entitlement; no new scope/key/login/billing was attempted.
+F `agy -p` (agy 1.5.3, darwin/arm64): once, no extra flags, empty directory; exit0, no MP4/file. It reported `generate_image` as its only media generator and no video tool; its shell attempt was refused by a user-configured deny rule. **Agent output, not proof of backend capability.** E2's two earlier prompts also produced no media and claimed image generation/media inspection but no video/audio generator.
+Static agy 1.5.3 has image plumbing and application Interactions translation; no video application route or Interactions caller-to-host binding was established. Vendored video SDK symbols are leads only.
+Unknown: another Omni body/route, server-side tools, valid `listModelConfigs` input and Interactions transport. No real/playable video was obtained. **#7 closed 2026-11-07 as no route through this login; re-probe when `fetchAvailableModels` or the agy changelog gains video.** No general upstream-absence conclusion follows.
+
 ## Quota payloads
 
 - `retrieveUserQuotaSummary`: groups with buckets `{ remainingFraction, resetTime, window | bucketId | displayName }`; window enums vary (`weekly`/`WEEKLY`, `5h`/`FIVE_HOUR`) and are normalized.

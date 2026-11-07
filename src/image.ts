@@ -1,3 +1,4 @@
+import { sanitizeError } from "./sanitize.js";
 import { setTimeout as delay } from "node:timers/promises";
 import { canUseStoredAccessToken, getValidAccessToken, isAntigravityConfigured, parseFormattedApiKey } from "./auth.js";
 import {
@@ -85,24 +86,6 @@ export function mapSizeToImageConfig(size?: string): { aspectRatio?: string; ima
   };
 }
 
-function redactImageAuthError(error: unknown): string {
-  const messages: string[] = [];
-  const seen = new Set<unknown>();
-  for (let current = error; current && messages.length < 3 && !seen.has(current);) {
-    seen.add(current);
-    const item = current as { message?: unknown; cause?: unknown };
-    messages.push(typeof item.message === "string" ? item.message : String(current));
-    current = item.cause;
-  }
-  return messages.join(": ")
-    .replace(/Bearer\s+[a-zA-Z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
-    .replace(/\bya29\.[a-zA-Z0-9._-]+/g, "[REDACTED]")
-    .replace(/(^|[^a-zA-Z0-9])1\/\/[a-zA-Z0-9._-]{8,}/g, "$1[REDACTED]")
-    .replace(/\bGOCSPX-[a-zA-Z0-9_-]+/g, "[REDACTED]")
-    .replace(/\beyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]*/g, "[REDACTED]")
-    .replace(/("?(?:access_?token|refresh_?token|id_?token|client_?secret|api_?key|token)"?\s*[:=]\s*"?)[^"&\s,}]+/gi, "$1[REDACTED]");
-}
-
 export async function executeAntigravityImageGeneration(
   req: ImageGenerationRequest,
   options: BuildImageProviderOptions = {}
@@ -169,7 +152,7 @@ export async function executeAntigravityImageGeneration(
           ((detail?.code === "missing-provider-auth" || detail?.code === "missing-api-key") && detail?.provider === PROVIDER_ID) ||
           /^No API key (?:found|resolved) for provider "antigravity"(?:[.\s]|$)/.test(message);
         if (!missingLogin) {
-          throw new Error(`[antigravity] Image authentication failed: ${redactImageAuthError(error)}`);
+          throw new Error(`[antigravity] Image authentication failed: ${sanitizeError(error)}`);
         }
       }
     }

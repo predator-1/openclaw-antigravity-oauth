@@ -28,6 +28,9 @@
  * Tokens are never printed or logged; error text is passed through sanitizeError().
  */
 
+import { sanitizeError } from "../dist/sanitize.js";
+export { sanitizeError };
+
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -77,31 +80,6 @@ export function parseArgs(rawArgs = process.argv.slice(2), env = process.env) {
     }
   }
   return { json, agentId, targetModel, authSource, agyTokenFile, minUsageWindows };
-}
-
-/**
- * Sanitize error message to prevent secret or sensitive identity leaks
- */
-export function sanitizeError(err) {
-  if (!err) return "unknown error";
-  let msg = typeof err === "string" ? err : err.message || String(err);
-  // Redact email addresses
-  msg = msg.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, "[REDACTED_EMAIL]");
-  // Redact bearer tokens
-  msg = msg.replace(/Bearer\s+[a-zA-Z0-9._~+/=-]+/gi, "Bearer [REDACTED_TOKEN]");
-  // Redact bare Google OAuth access tokens, refresh tokens, client secrets and JWTs
-  msg = msg.replace(/\bya29\.[a-zA-Z0-9._-]+/g, "[REDACTED_TOKEN]");
-  msg = msg.replace(/(^|[^a-zA-Z0-9])1\/\/[a-zA-Z0-9._-]{8,}/g, "$1[REDACTED_TOKEN]");
-  msg = msg.replace(/\bGOCSPX-[a-zA-Z0-9_-]+/g, "[REDACTED_SECRET]");
-  msg = msg.replace(/\beyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]*/g, "[REDACTED_JWT]");
-  // Redact token-bearing JSON / form fields
-  msg = msg.replace(
-    /("?(?:access_?token|refresh_?token|id_?token|client_?secret)"?\s*[:=]\s*"?)[^"&\s,}]+/gi,
-    "$1[REDACTED]"
-  );
-  // Redact project numbers and named project IDs (e.g. projects/my-proj-123)
-  msg = msg.replace(/\bprojects\/[a-z0-9][a-z0-9-]*/gi, "projects/[REDACTED]");
-  return msg.trim();
 }
 
 /**

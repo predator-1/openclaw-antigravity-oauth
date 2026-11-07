@@ -1,3 +1,4 @@
+import { sanitizeError } from "./sanitize.js";
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import {
@@ -747,7 +748,7 @@ export async function refreshOAuthCredential(
         continue;
       }
       throw new Error(
-        `Authentication error: network failure during token refresh (${networkErr instanceof Error ? networkErr.message : String(networkErr)})`
+        `Authentication error: network failure during token refresh (${sanitizeError(networkErr)})`
       );
     }
 
@@ -757,8 +758,8 @@ export async function refreshOAuthCredential(
       try {
         const errJson = (await response.json()) as { error?: string; error_description?: string };
         if (errJson) {
-          if (typeof errJson.error === "string") errCode = errJson.error;
-          if (typeof errJson.error_description === "string") errDescription = errJson.error_description;
+          if (typeof errJson.error === "string") errCode = sanitizeError(errJson.error);
+          if (typeof errJson.error_description === "string") errDescription = sanitizeError(errJson.error_description);
         }
       } catch {
         // Body not JSON

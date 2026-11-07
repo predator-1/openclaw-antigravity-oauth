@@ -81,6 +81,14 @@ The plugin previously ignored `options.responseFormat`. It now maps it on Gemini
 - Private, loopback and link-local URLs are refused before any upstream call. `checkUrlDenylist` is attempted first and skipped if that probe fails.
 - Auto-detect: `authProviderId: "antigravity"`, `requiresCredential: true`, `autoDetectOrder: 40`. Readiness is a local auth-profile lookup, no network.
 
+## SDK readiness compatibility
+
+Decision/evidence (2026-11-07, published `openclaw@2026.10.8` and `@2026.10.10`, unpacked with `npm pack`; installed SDK directory unavailable):
+
+- Keep the declared 2026.10.8 minimum and sync fallbacks: that package's `runtime-types-lAgJ9sB9.d.ts` / `loader-runtime-load-BYmZwotb.mjs` expose only sync readiness/auth methods. The image provider now also supplies `isConfiguredAsync`; its helper prefers `ensureAuthProfileStoreAsync(agentDir, options)` and `isProviderApiKeyConfiguredAsync(params)` independently, awaits them, and returns false on absent auth or errors. Both receive `readOnly: true`, `allowKeychainPrompt: false`; the key check receives the prepared store. No sync retry after an async error.
+- 2026.10.10 confirms the signatures in `config-contracts-CaROPwlH.d.ts` (`modelAuth`, auth store/options), `runtime-types-BrbucdBv.d.ts` (`isConfiguredAsync(ctx): Promise<boolean>`), and wiring in `loader-runtime-load-DmW4CQhd.mjs`. `runtime-shared-DeK1EtAT.mjs` prefers the async image hook. `store-BuHyZgtK.mjs` / `sdk-deprecation-DjTmOhOX.mjs` confirm both warning families' last compatibility day is 2026-12-31, with removal in the first January 2027 stable release.
+- The warning's “media provider” is the shared image/music/video readiness path, not the web providers: `WebSearchProviderPlugin` / `WebFetchProviderPlugin` in both packages declare neither readiness hook. Leave search/fetch's existing local sync helpers unchanged rather than invent an async web contract; search uses the host's `authProviderId` lookup. No installed-build warning check was run; maintainer will run it.
+
 ## Image generation
 
 - `api.registerImageGenerationProvider`; id `antigravity`; supported model `gemini-3.1-flash-image`. Undefined, empty or whitespace-only input defaults to that model; that id and `flash-image` accept an optional `antigravity/` prefix. A bare `antigravity/` prefix is unsupported. Any other id is rejected before auth or an upstream request; no substitution or chat-to-image mapping (2026-11-07, `resolveImageModel` and hermetic acceptance tests). HTTP failures name the model. Maintainer-reported live smoke (2026-11-07): `gemini-3.1-flash-image` generated one image; the smoke calls the plugin directly, not the host `image_generate`. Earlier 404s on other image models: [protocol.md](protocol.md#errors).

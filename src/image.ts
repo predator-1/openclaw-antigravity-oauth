@@ -1,4 +1,4 @@
-import { isAntigravityConfigured, parseFormattedApiKey } from "./auth.js";
+import { isAntigravityConfigured, isAntigravityConfiguredAsync, parseFormattedApiKey } from "./auth.js";
 import {
   DEFAULT_ENDPOINTS,
   DEFAULT_IMAGE_MODEL,
@@ -453,6 +453,8 @@ export function buildAntigravityImageGenerationProvider(
     },
     isConfigured: (ctx?: { cfg?: unknown; agentDir?: string }) =>
       isAntigravityConfigured(ctx, options.defaultAuthStore, options.modelAuth),
+    isConfiguredAsync: (ctx?: { cfg?: unknown; agentDir?: string }) =>
+      isAntigravityConfiguredAsync(ctx, options.defaultAuthStore, options.modelAuth),
     generateImage: async (req: ImageGenerationRequest) =>
       await executeAntigravityImageGeneration(req, options)
   };

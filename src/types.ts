@@ -679,13 +679,27 @@ export interface AntigravityImageGenerationProvider {
     };
   };
   isConfigured?: (ctx: { cfg?: unknown; agentDir?: string }) => boolean;
+  isConfiguredAsync?: (ctx: { cfg?: unknown; agentDir?: string }) => Promise<boolean>;
   generateImage: (req: ImageGenerationRequest) => Promise<ImageGenerationResult>;
 }
 
 export interface ModelAuthRuntime {
+  isProviderApiKeyConfiguredAsync?: (params: {
+    provider: string;
+    cfg?: unknown;
+    agentDir?: string | undefined;
+    store?: unknown;
+    readOnly?: boolean | undefined;
+    allowKeychainPrompt?: boolean | undefined;
+  }) => Promise<boolean>;
+  ensureAuthProfileStoreAsync?: (
+    agentDir?: string | undefined,
+    options?: { readOnly?: boolean | undefined; allowKeychainPrompt?: boolean | undefined }
+  ) => Promise<unknown>;
   isProviderApiKeyConfigured?: (params: {
     provider: string;
     cfg?: unknown;
+    store?: unknown;
     agentDir?: string | undefined;
     readOnly?: boolean | undefined;
     allowKeychainPrompt?: boolean | undefined;

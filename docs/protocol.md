@@ -133,6 +133,17 @@ Tool names must match `^[a-zA-Z_][a-zA-Z0-9_]{0,63}$`. `ToolNameMapper.toSafeNam
 - Argon with 0 credits: 429 `RESOURCE_EXHAUSTED` on `gemini-4-argon-*`. The 404 `Requested entity was not found` seen earlier comes from the dead `MODEL_PLACEHOLDER_M124` alias, not from quota (see [Model ids](#model-ids-2026-11-02)).
 - Image models other than `gemini-3.1-flash-image` (`imagen-*`, `gemini-3-pro-image`, `gemini-2.5-flash-image`): 404.
 
+## Video generation (probed 2026-11-07)
+
+Not available on `v1internal` in the forms tried (client identity `antigravity/cli/1.5.2`, subscription login). This covers only the ids and RPC names below, so re-probe if `fetchAvailableModels` gains a video routing list.
+
+- `fetchAvailableModels`: 26 models, no video routing list, no video or `veo-` model id, no `veo-` string anywhere in the payload.
+- `streamGenerateContent` with `responseModalities: ["VIDEO"]`:
+  - `veo-3.1-fast-generate-preview`, `veo-3.1-generate-preview`, `veo-3.1-lite-generate-preview`: 404 `NOT_FOUND`, the same as the invented control id `veo-probe-does-not-exist`.
+  - `gemini-3.1-flash-image`: 200 with an `image/jpeg` part and no video part.
+  - `gemini-3.8-flash-tiered`: 200 with text saying it cannot generate video files.
+- `v1internal:predictLongRunning` and `v1internal:generateVideos`: non-JSON 404, the same as the invented control RPC `probeRpcDoesNotExist`.
+
 ## Quota payloads
 
 - `retrieveUserQuotaSummary`: groups with buckets `{ remainingFraction, resetTime, window | bucketId | displayName }`; window enums vary (`weekly`/`WEEKLY`, `5h`/`FIVE_HOUR`) and are normalized.

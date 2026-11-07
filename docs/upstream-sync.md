@@ -24,6 +24,10 @@ Options: `--agy-bin=<path>` (or `AGY_BIN`; default `command -v agy`, usually `~/
 
 Mach-O 64-bit (thin or universal; `LC_SEGMENT_64`; universal uses the host-arch slice) and ELF64 (`PT_LOAD`; PIE `R_*_RELATIVE` applied in memory; `DT_RELR` refused, verdict 30) can be parsed on any host OS. PE/COFF is unsupported (verdict 30).
 
+## Image routing coverage
+
+The offline fingerprint's `agy models` list covers chat models, not image routing. The smoke checks that separately: [catalog image-model check](development-and-testing.md#integration-smoke-local-only-real-upstream-uses-quota).
+
 ## Fingerprint fields
 
 Compared (and written to the baseline): `cliVersion`, `latestChangelog`, `rpcNames` (`used` by `src/` / `other`), `googleHosts` (`used` / `other`), `oauthClientPrefixes`, `consumerClientParity` (booleans and secret hash), `oauthScopes`, `requestShapeMarkers`, `subcommands`, `models`. Not stored: `platform`, `binaryFormat`, `binarySha256`.

@@ -45,6 +45,7 @@ npm run test:integration -- --auth-source=agy [--agy-token-file=<path>] [--min-u
   - `auto`: openclaw, then agy.
 - Checks:
   - catalog against the published models (legacy mapped ids are not reported as removed);
+  - `catalog:image-model` reuses that discovery response: pass when `imageGenerationModelIds` contains `DEFAULT_IMAGE_MODEL`, fail with expected/reported ids otherwise, skip if absent. Reports ids only; no raw payload or runtime model selection changes;
   - per model: `pong` turn and a tool round trip (`jira:get_ticket`, nullable `anyOf` schema);
   - usage (at least `--min-usage-windows`, default 5);
   - search citations;

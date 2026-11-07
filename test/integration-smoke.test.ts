@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import { pathToFileURL } from "node:url";
 
 const smoke = await import(pathToFileURL(path.resolve("scripts/integration-smoke.js")).href);
+const { DEFAULT_IMAGE_MODEL } = await import(pathToFileURL(path.resolve("dist/constants.js")).href);
 
 // Obviously fake values shaped like real Google credentials.
 const FAKE_ACCESS = "ya29.FAKE-access-token-for-tests_0123456789";
@@ -240,5 +241,109 @@ describe("integration-smoke: catalog check", () => {
     const res = smoke.evaluateCatalog(published.map((id) => ({ id })), catalog.KNOWN_CATALOG_MODELS);
     assert.deepEqual(res.data.added, []);
     assert.ok(res.data.removed.every((id: string) => !catalog.LEGACY_MAPPED_MODELS.includes(id)));
+  });
+});
+
+
+describe("integration-smoke: image routing catalog check", () => {
+  const expected = DEFAULT_IMAGE_MODEL;
+
+  it("passes when the pinned image id is present without mutating the routing list", () => {
+    const ids = ["fixture-other-image", expected];
+    const result = smoke.evaluateImageModelCatalog(ids);
+    assert.equal(result.check, "catalog:image-model");
+    assert.equal(result.target, expected);
+    assert.equal(result.status, "pass");
+    assert.deepEqual(result.data, { expected, imageGenerationModelIds: ids });
+    assert.deepEqual(ids, ["fixture-other-image", expected]);
+  });
+
+  it("fails when the pinned id is missing and reports both expected and upstream ids", () => {
+    const result = smoke.evaluateImageModelCatalog(["fixture-new-image"]);
+    assert.equal(result.status, "fail");
+    assert.ok(result.details.includes(expected));
+    assert.ok(result.details.includes("fixture-new-image"));
+    assert.deepEqual(result.data, { expected, imageGenerationModelIds: ["fixture-new-image"] });
+  });
+
+  it("skips only an absent field, not a present empty list", () => {
+    assert.equal(smoke.evaluateImageModelCatalog(undefined).status, "skipped");
+    const empty = smoke.evaluateImageModelCatalog([]);
+    assert.equal(empty.status, "fail");
+    assert.deepEqual(empty.data.imageGenerationModelIds, []);
+  });
+
+  it("does not serialize malformed values as payloads", () => {
+    const malformed = { unrelated: "DO_NOT_PRINT_FIXTURE" };
+    for (const value of [null, malformed, [malformed]]) {
+      const result = smoke.evaluateImageModelCatalog(value);
+      assert.equal(result.status, "fail");
+      assert.ok(!JSON.stringify(result).includes("DO_NOT_PRINT_FIXTURE"));
+      assert.deepEqual(result.data.imageGenerationModelIds, []);
+    }
+  });
+
+  async function fixtureCatalog(imageIds: string[] | undefined, status = 200) {
+    const { InMemoryAuthProfileStore } = await import(pathToFileURL(path.resolve("dist/auth.js")).href);
+    const { DEFAULT_ENDPOINTS, PROVIDER_ID } = await import(pathToFileURL(path.resolve("dist/constants.js")).href);
+    const store = new InMemoryAuthProfileStore();
+    await store.setSecret(PROVIDER_ID, {
+      accessToken: "fixture-access", refreshToken: "", expiresAt: Date.now() + 3_600_000
+    });
+    let requests = 0;
+    const payload = {
+      models: [{ id: "gemini-3.8-flash", displayName: "Fixture chat" }],
+      ...(imageIds === undefined ? {} : { imageGenerationModelIds: imageIds }),
+      unrelated: { value: "DO_NOT_PRINT_FIXTURE" }
+    };
+    const result = await smoke.runCatalogChecks(store, async (input: unknown) => {
+      requests++;
+      assert.equal(String(input), DEFAULT_ENDPOINTS.modelsUrl);
+      return new Response(JSON.stringify(payload), { status });
+    });
+    assert.equal(requests, 1, "image routing must reuse the chat discovery request");
+    assert.deepEqual(result.checks.map((r: any) => r.check), ["catalog", "catalog:image-model"]);
+    assert.equal(result.checks.length, 2, "catalog now contributes two smoke checks");
+    assert.ok(!JSON.stringify(result.checks).includes("DO_NOT_PRINT_FIXTURE"));
+    return result;
+  }
+
+  it("wires pass/fail/skip from the same response while retaining the cached chat catalog", async () => {
+    for (const [ids, status] of [
+      [[expected], "pass"], [["fixture-new-image"], "fail"], [undefined, "skipped"]
+    ] as const) {
+      const { catalog, checks } = await fixtureCatalog(ids ? [...ids] : undefined);
+      assert.equal(checks[0].status, "pass");
+      assert.equal(checks[1].status, status);
+      const cachedIds = catalog.getCachedModels().map((m: any) => m.id);
+      assert.ok(cachedIds.includes("gemini-3.8-flash"));
+      assert.ok(!cachedIds.includes(expected));
+      assert.ok(!cachedIds.includes("fixture-new-image"));
+    }
+  });
+
+  it("reports catalog failure plus an unchecked image routing skip when discovery fails", async () => {
+    const { checks } = await fixtureCatalog([expected], 404);
+    assert.equal(checks[0].status, "fail");
+    assert.equal(checks[1].status, "skipped");
+    assert.match(checks[1].details, /discovery unavailable/);
+  });
+
+  it("includes the new check in the nine-result single-chat-model smoke fixture", async () => {
+    const { checks } = await fixtureCatalog([expected]);
+    const results = [
+      ...checks,
+      smoke.evaluatePongTurn("fixture-chat", { text: "pong" }),
+      smoke.evaluateToolRoundTrip("fixture-chat", { toolCalls: [{ name: "fixture-tool" }] }, { text: "done" }),
+      smoke.evaluateUsage({ buckets: [{}, {}, {}, {}, {}] }),
+      smoke.evaluateSearch({ citations: [{}] }),
+      smoke.evaluateFetch({ text: "fixture-nonce" }, "fixture-nonce"),
+      smoke.evaluateImageGeneration(expected, { images: [{ buffer: Buffer.from("fixture"), mimeType: "image/jpeg" }] }),
+      smoke.evaluateImageDescribe("fixture-chat", { text: "a star" })
+    ];
+    assert.equal(results.length, 9);
+    assert.equal(results.filter((r: any) => r.status === "pass").length, 9);
+    assert.equal(results.filter((r: any) => r.status !== "pass").length, 0);
+    assert.equal(results.filter((r: any) => r.check === "catalog:image-model").length, 1);
   });
 });

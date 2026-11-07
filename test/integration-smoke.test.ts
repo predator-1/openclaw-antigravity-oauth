@@ -220,11 +220,11 @@ describe("integration-smoke: image generation retry", () => {
       [503, "UNAVAILABLE", true],
       [500, "INTERNAL", true],
       [400, "INVALID_ARGUMENT", false],
-      [404, "NOT_FOUND", false],
-      [429, "RESOURCE_EXHAUSTED", false]
+      [404, "NOT_FOUND", false]
     ] as const) {
       assert.equal(t(new Error(`[antigravity] Image generation failed with HTTP ${status} (model gemini-3.1-flash-image): ${summary}`)), transient);
     }
+    assert.equal(t(new Error("[antigravity] Quota exceeded HTTP 429 (model gemini-3.1-flash-image): RESOURCE_EXHAUSTED")), false);
   });
 });
 

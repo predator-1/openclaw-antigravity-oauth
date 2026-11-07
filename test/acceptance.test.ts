@@ -3614,11 +3614,12 @@ if (args[0] === "models" && args[1] === "list") {
         throw new Error("Unexpected upstream request");
       }
     });
-    for (const model of ["gemini-3.8-flash", "antigravity/gemini-3.8-flash", "imagen-4"]) {
+    for (const model of ["gemini-3.8-flash", "antigravity/gemini-3.8-flash", "imagen-4", "antigravity/"]) {
       await assert.rejects(provider.generateImage({ prompt: "draw a star", model }), (err: Error) => {
-        assert.ok(err.message.includes(`"${model}"`));
-        assert.ok(err.message.includes(DEFAULT_IMAGE_MODEL));
-        assert.ok(err.message.includes("agents.defaults.mediaModels.image"));
+        assert.equal(
+          err.message,
+          `Unsupported Antigravity image model "${model}". Supported model: gemini-3.1-flash-image. Set agents.defaults.mediaModels.image or pass a per-call model override.`
+        );
         return true;
       });
     }
@@ -3702,7 +3703,7 @@ if (args[0] === "models" && args[1] === "list") {
     assert.equal(reqObj.generationConfig?.imageConfig?.aspectRatio, "1:1");
 
     // Accepted spellings all send the one supported upstream image model.
-    for (const model of [undefined, "", "antigravity/", "gemini-3.1-flash-image", "antigravity/gemini-3.1-flash-image", "flash-image", "antigravity/flash-image"]) {
+    for (const model of [undefined, "", " \t\n ", "gemini-3.1-flash-image", "antigravity/gemini-3.1-flash-image", "flash-image", "antigravity/flash-image"]) {
       capturedBody = undefined;
       const generated = await provider.generateImage({ prompt: "draw a star", ...(model !== undefined ? { model } : {}) });
       assert.equal(generated.model, DEFAULT_IMAGE_MODEL);

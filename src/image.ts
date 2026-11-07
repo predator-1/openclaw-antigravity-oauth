@@ -44,12 +44,12 @@ export function resolveImageModel(model?: string): { canonicalId: string; upstre
   const raw = (model ?? "").trim();
   const stripped = raw.startsWith(`${PROVIDER_ID}/`) ? raw.slice(PROVIDER_ID.length + 1) : raw;
 
-  if (!stripped || stripped === DEFAULT_IMAGE_MODEL || stripped === "flash-image") {
+  if (!raw || stripped === DEFAULT_IMAGE_MODEL || stripped === "flash-image") {
     return { canonicalId: DEFAULT_IMAGE_MODEL, upstreamSlug: DEFAULT_IMAGE_MODEL };
   }
 
   throw new Error(
-    `Unsupported Antigravity image model "${raw}". Supported model: ${DEFAULT_IMAGE_MODEL}. Check agents.defaults.mediaModels.image.`
+    `Unsupported Antigravity image model "${raw}". Supported model: ${DEFAULT_IMAGE_MODEL}. Set agents.defaults.mediaModels.image or pass a per-call model override.`
   );
 }
 

@@ -8,6 +8,10 @@ agy patch = plugin patch ÷ 100). See [docs/install-and-release.md](docs/install
 
 ## [Unreleased]
 
+### Fixed
+
+- Reject unsupported image-generation model ids before upstream requests and include the model in HTTP errors.
+
 ## [1.5.201] - 2026-11-07
 
 Targets agy 1.5.2. First public release, with a build provenance attestation; no runtime changes.

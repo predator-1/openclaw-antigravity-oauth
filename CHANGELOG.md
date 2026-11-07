@@ -8,6 +8,10 @@ agy patch = plugin patch ÷ 100). See [docs/install-and-release.md](docs/install
 
 ## [Unreleased]
 
+### Fixed
+
+- Include published plain-slug chat models in the known catalog so Gemini 3.5 Flash Lite is not repeatedly reported as new.
+
 ## [1.5.300] - 2026-11-08
 
 Targets agy 1.5.3.

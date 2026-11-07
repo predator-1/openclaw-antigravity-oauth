@@ -230,17 +230,39 @@ describe("integration-smoke: image generation retry", () => {
 });
 
 describe("integration-smoke: catalog check", () => {
+  it("knows the observed plain slug without inventing a proto alias or changing its display name", async () => {
+    const catalog = await import(pathToFileURL(path.resolve("dist/catalog.js")).href);
+    const id = "gemini-3.5-flash-lite";
+    assert.ok(catalog.KNOWN_CATALOG_MODELS.includes(id));
+    assert.equal(catalog.KNOWN_DISPLAY_NAME_OVERRIDES[id], "Gemini 3.5 Flash Lite");
+    assert.equal(catalog.isEligibleChatModel({ id }), true);
+    assert.equal(Object.values(catalog.PROTO_MODEL_ID_MAP).some((m: any) => m.canonicalId === id), false);
+  });
+
+  it("reports no additions or removals for an upstream list made of every known id", async () => {
+    const catalog = await import(pathToFileURL(path.resolve("dist/catalog.js")).href);
+    const known = catalog.KNOWN_CATALOG_MODELS;
+    assert.equal(known.length, 7);
+    assert.equal(new Set(known).size, known.length);
+    const result = smoke.evaluateCatalog(known.map((id: string) => ({ id })), known);
+    assert.equal(result.status, "pass");
+    assert.deepEqual(result.data, { total: 7, added: [], removed: [] });
+  });
+
   it("compares upstream against published models only; legacy mapping ids are never 'removed'", async () => {
     const catalog = await import(pathToFileURL(path.resolve("dist/catalog.js")).href);
     for (const id of ["gemini-2.5-flash", "gemini-2.5-flash-thinking", "gemini-2.5-pro", "gemini-3.1-flash-lite"]) {
       assert.ok(!catalog.KNOWN_CATALOG_MODELS.includes(id), id);
       assert.ok(catalog.LEGACY_MAPPED_MODELS.includes(id), id);
     }
-    const published = ["claude-opus-5-5", "claude-sonnet-5-5", "gemini-3.8-flash", "gpt-oss-120b", "gemini-4-argon"];
-    for (const id of published) assert.ok(catalog.KNOWN_CATALOG_MODELS.includes(id), id);
+    const published = [
+      "claude-opus-5-5", "claude-sonnet-5-5", "gemini-3-flash",
+      "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-4-argon", "gpt-oss-120b"
+    ];
+    assert.deepEqual(catalog.KNOWN_CATALOG_MODELS, published);
     const res = smoke.evaluateCatalog(published.map((id) => ({ id })), catalog.KNOWN_CATALOG_MODELS);
     assert.deepEqual(res.data.added, []);
-    assert.ok(res.data.removed.every((id: string) => !catalog.LEGACY_MAPPED_MODELS.includes(id)));
+    assert.deepEqual(res.data.removed, []);
   });
 });
 

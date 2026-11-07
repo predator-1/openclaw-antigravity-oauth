@@ -187,6 +187,14 @@ export const EXTENDED_THINKING_LEVEL_MODELS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Published chat slugs without proto aliases; evidence (Routing lists, 2026-11-06):
+ * docs/protocol.md#fetchavailablemodels-schema-from-agys-protos
+ */
+const PUBLISHED_SLUG_ONLY_MODELS: Readonly<Record<string, string>> = Object.freeze({
+  "gemini-3.5-flash-lite": "Gemini 3.5 Flash Lite"
+});
+
+/**
  * Corrects known mislabeled display names returned by v1internal:fetchAvailableModels.
  */
 export const KNOWN_DISPLAY_NAME_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
@@ -194,7 +202,7 @@ export const KNOWN_DISPLAY_NAME_OVERRIDES: Readonly<Record<string, string>> = Ob
   "gemini-2.5-flash-thinking": "Gemini 2.5 Flash Thinking",
   "gemini-2.5-flash-lite": "Gemini 2.5 Flash Lite",
   "gemini-3-flash": "Gemini 3 Flash",
-  "gemini-3.5-flash-lite": "Gemini 3.5 Flash Lite",
+  ...PUBLISHED_SLUG_ONLY_MODELS,
   "gemini-3.8-flash": "Gemini 3.8 Flash",
   "gemini-4-argon": "Gemini 4 Argon",
   "claude-opus-5-5": "Claude Opus 5.5",
@@ -243,13 +251,15 @@ const MAPPED_CANONICAL_IDS: readonly string[] = Array.from(
 ).sort();
 
 /**
- * Canonical chat models the plugin publishes, derived from PROTO_MODEL_ID_MAP.
+ * Canonical chat models from proto mappings and observed published plain slugs.
  * Ids the catalog filters out (NON_CHAT_ID_PATTERNS, e.g. gemini-2.5-*, gemini-3.1-*) are
  * legacy mapping entries kept only so old proto ids still resolve; they are listed in
  * LEGACY_MAPPED_MODELS and never reported as published or "removed".
  */
 export const KNOWN_CATALOG_MODELS: readonly string[] = Object.freeze(
-  MAPPED_CANONICAL_IDS.filter((id) => isEligibleChatModel({ id }))
+  Array.from(new Set([...MAPPED_CANONICAL_IDS, ...Object.keys(PUBLISHED_SLUG_ONLY_MODELS)]))
+    .filter((id) => isEligibleChatModel({ id }))
+    .sort()
 );
 
 /** Canonical ids in PROTO_MODEL_ID_MAP that the plugin does not publish. */

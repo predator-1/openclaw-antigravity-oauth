@@ -923,7 +923,7 @@ describe("@openclaw/antigravity-provider acceptance suite (docs/architecture.md,
     const definition = toOpenClawCatalogModelDefinition(lite, DEFAULT_ENDPOINTS.chatCompletionsUrl);
     assert.equal(definition.id, "gemini-3.5-flash-lite");
     assert.equal(definition.name, "Gemini 3.5 Flash Lite");
-    assert.deepEqual(definition.tags, ["cheap"]);
+    assert.equal("tags" in definition, false, "provider model settings reject authored-catalog tags");
     assert.deepEqual(definition.input, ["text", "image"]);
     assert.deepEqual(definition.compat?.supportedReasoningEfforts, ["off", "low", "medium", "high"]);
     assert.equal(definition.cost.input, 0);

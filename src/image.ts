@@ -314,8 +314,20 @@ export async function executeAntigravityImageGeneration(
             attempt--; // Rate-limit retries do not consume the separate text-only retry.
             continue;
           }
-          const terminal = classification.type === "terminal_quota";
-          const reset = classification.resetAt ? formatResetTime(classification.resetAt) : undefined;
+          const terminal = classification.type !== "transient_rate_limit";
+          let reset = classification.resetAt ? formatResetTime(classification.resetAt) : undefined;
+          if (!reset) {
+            try {
+              const payload = JSON.parse(errorText);
+              const details = (payload?.error ?? payload)?.details;
+              if (Array.isArray(details)) {
+                for (const detail of details) {
+                  const candidate = formatResetTime(detail?.metadata?.quotaResetTimeStamp);
+                  if (candidate) { reset = candidate; break; }
+                }
+              }
+            } catch { /* Reset metadata is optional; never include the raw payload. */ }
+          }
           const resetNotice = reset ? ` (Resets ${reset.relative})` : "";
           const label = terminal ? "Quota exceeded" : classification.type === "transient_rate_limit"
             ? "Image generation rate or capacity limit" : "Image generation failed with";

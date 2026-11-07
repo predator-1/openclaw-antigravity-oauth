@@ -379,3 +379,38 @@ describe("image stored refresh lifetime and fallback", () => {
     });
   }
 });
+
+
+describe("image quota fallback parity", () => {
+  for (const classified of [false, true]) {
+    it(`${classified ? "QUOTA_EXHAUSTED" : "unclassified 429"} is terminal quota without retry`, async () => {
+      let calls = 0;
+      const provider = buildAntigravityImageGenerationProvider({ fetchFn: async () => {
+        calls++;
+        return classified ? rpc429("QUOTA_EXHAUSTED") : new Response("RESOURCE_EXHAUSTED", { status: 429 });
+      } });
+      await assert.rejects(provider.generateImage({ prompt: "draw a star", apiKey: "fixture" }),
+        (error: Error & { isTerminalQuota?: boolean; isTransientRateLimit?: boolean }) => {
+          assert.match(error.message, /Quota exceeded HTTP 429/);
+          assert.equal(error.isTerminalQuota, true); assert.equal(error.isTransientRateLimit, false); return true;
+        });
+      assert.equal(calls, 1);
+    });
+  }
+
+  it("reads reset timestamp from any details entry, even after an invalid one", async (t) => {
+    const now = Date.parse("2026-11-07T10:00:00Z");
+    t.mock.timers.enable({ apis: ["Date"], now });
+    let calls = 0;
+    const provider = buildAntigravityImageGenerationProvider({ fetchFn: async () => {
+      calls++;
+      return new Response(JSON.stringify({ error: { message: "RESOURCE_EXHAUSTED", details: [
+        null,
+        { metadata: { quotaResetTimeStamp: "invalid fixture timestamp" } },
+        { metadata: { quotaResetTimeStamp: new Date(now + 3600_000).toISOString() } }
+      ] } }), { status: 429 });
+    } });
+    await assert.rejects(provider.generateImage({ prompt: "draw a star", apiKey: "fixture" }), /Quota exceeded.*Resets in 1h/);
+    assert.equal(calls, 1);
+  });
+});

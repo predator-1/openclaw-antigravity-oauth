@@ -1,3 +1,4 @@
+import { sanitizeError } from "./sanitize.js";
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import {
@@ -182,6 +183,49 @@ export function isAntigravityConfigured(
   }
 
   return false;
+}
+
+/** Prefer worker-backed host checks; sync methods are only for older hosts. */
+export async function isAntigravityConfiguredAsync(
+  ctx?: { cfg?: unknown; agentDir?: string } | undefined,
+  authStore?: AuthProfileStore | undefined,
+  modelAuth?: ModelAuthRuntime | undefined
+): Promise<boolean> {
+  try {
+    if (authStore?.hasSecret?.(PROVIDER_ID)) {
+      return true;
+    }
+    if (!modelAuth) {
+      return false;
+    }
+
+    const ensureStore = modelAuth.ensureAuthProfileStoreAsync ?? modelAuth.ensureAuthProfileStore;
+    const store = ensureStore
+      ? await ensureStore.call(modelAuth, ctx?.agentDir, { readOnly: true, allowKeychainPrompt: false })
+      : undefined;
+    if (store !== undefined && typeof modelAuth.listProfilesForProvider === "function") {
+      const profiles = modelAuth.listProfilesForProvider(store, PROVIDER_ID);
+      if (Array.isArray(profiles) && profiles.length > 0) {
+        return true;
+      }
+    }
+
+    const params = {
+      provider: PROVIDER_ID,
+      cfg: ctx?.cfg,
+      agentDir: ctx?.agentDir,
+      ...(store !== undefined ? { store } : {}),
+      readOnly: true,
+      allowKeychainPrompt: false
+    };
+    if (typeof modelAuth.isProviderApiKeyConfiguredAsync === "function") {
+      return Boolean(await modelAuth.isProviderApiKeyConfiguredAsync(params));
+    }
+    return Boolean(modelAuth.isProviderApiKeyConfigured?.(params));
+  } catch {
+    // Fail closed; a failed async check must not retry through deprecated APIs.
+    return false;
+  }
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -693,12 +737,30 @@ function getProfileHint(profileId?: string): string {
   return ` [profile: ${hash}]`;
 }
 
+const ACCESS_TOKEN_EXPIRY_SKEW_MS = 60_000;
+const HOST_MANAGED_REFRESH_TOKEN = "managed-by-openclaw";
+
+function hasUsableRefreshToken(token: string | undefined): boolean {
+  return Boolean(token?.trim() && token.trim() !== HOST_MANAGED_REFRESH_TOKEN);
+}
+
+function isStoredAccessTokenFresh(credential: AntigravityAuthCredentials): boolean {
+  return Date.now() < credential.expiresAt - ACCESS_TOKEN_EXPIRY_SKEW_MS;
+}
+
+/** Whether a stored image credential can be used directly or refreshed locally. */
+export function canUseStoredAccessToken(credential: AntigravityAuthCredentials): boolean {
+  return Boolean(credential.accessToken &&
+    (isStoredAccessTokenFresh(credential) || hasUsableRefreshToken(credential.refreshToken)));
+}
+
 export async function refreshOAuthCredential(
   credential: OpenClawOAuthCredential,
   endpoints: AntigravityEndpoints = DEFAULT_ENDPOINTS,
-  fetchImpl: FetchLike = fetch
+  fetchImpl: FetchLike = fetch,
+  signal?: AbortSignal
 ): Promise<OpenClawOAuthCredential> {
-  if (!credential.refresh || credential.refresh === "managed-by-openclaw") {
+  if (!hasUsableRefreshToken(credential.refresh)) {
     throw new Error("Authentication error: missing refresh token for Antigravity credential");
   }
 
@@ -717,12 +779,16 @@ export async function refreshOAuthCredential(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let response: Response;
     try {
+      signal?.throwIfAborted();
       response = await fetchImpl(endpoints.tokenUrl, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-        body: bodyParams.toString()
+        body: bodyParams.toString(),
+        ...(signal ? { signal } : {})
       });
+      signal?.throwIfAborted();
     } catch (networkErr) {
+      signal?.throwIfAborted();
       lastError = networkErr;
       if (attempt < maxAttempts) {
         const backoffMs = Math.round(200 * Math.pow(2, attempt - 1) + Math.random() * 100);
@@ -730,7 +796,7 @@ export async function refreshOAuthCredential(
         continue;
       }
       throw new Error(
-        `Authentication error: network failure during token refresh (${networkErr instanceof Error ? networkErr.message : String(networkErr)})`
+        `Authentication error: network failure during token refresh (${sanitizeError(networkErr)})`
       );
     }
 
@@ -740,12 +806,14 @@ export async function refreshOAuthCredential(
       try {
         const errJson = (await response.json()) as { error?: string; error_description?: string };
         if (errJson) {
-          if (typeof errJson.error === "string") errCode = errJson.error;
-          if (typeof errJson.error_description === "string") errDescription = errJson.error_description;
+          if (typeof errJson.error === "string") errCode = sanitizeError(errJson.error);
+          if (typeof errJson.error_description === "string") errDescription = sanitizeError(errJson.error_description);
         }
       } catch {
+        signal?.throwIfAborted();
         // Body not JSON
       }
+      signal?.throwIfAborted();
 
       const detailParts: string[] = [];
       if (errCode) detailParts.push(`error: ${errCode}`);
@@ -784,6 +852,7 @@ export async function refreshOAuthCredential(
     }
 
     const data = (await response.json()) as TokenEndpointResponse;
+    signal?.throwIfAborted();
     if (!data.access_token) {
       throw new Error("Authentication error: token refresh did not return an access token");
     }
@@ -822,10 +891,13 @@ export async function refreshOAuthCredential(
 export async function refreshAccessToken(
   authStore: AuthProfileStore,
   endpoints: AntigravityEndpoints = DEFAULT_ENDPOINTS,
-  fetchImpl: FetchLike = fetch
+  fetchImpl: FetchLike = fetch,
+  signal?: AbortSignal
 ): Promise<AntigravityAuthCredentials> {
+  signal?.throwIfAborted();
   const existing = await authStore.getSecret(PROVIDER_ID);
-  if (!existing || !existing.refreshToken || existing.refreshToken === "managed-by-openclaw") {
+  signal?.throwIfAborted();
+  if (!existing || !hasUsableRefreshToken(existing.refreshToken)) {
     throw new Error("Authentication error: no stored Antigravity subscription credential");
   }
 
@@ -841,7 +913,8 @@ export async function refreshAccessToken(
       ...(existing.accountId !== undefined ? { accountId: existing.accountId } : {})
     },
     endpoints,
-    fetchImpl
+    fetchImpl,
+    signal
   );
 
   const updated: AntigravityAuthCredentials = {
@@ -853,6 +926,7 @@ export async function refreshAccessToken(
     ...(existing.projectId !== undefined ? { projectId: existing.projectId } : {})
   };
 
+  signal?.throwIfAborted();
   await authStore.setSecret(PROVIDER_ID, updated);
   return updated;
 }
@@ -860,20 +934,23 @@ export async function refreshAccessToken(
 export async function getValidAccessToken(
   authStore: AuthProfileStore,
   endpoints: AntigravityEndpoints = DEFAULT_ENDPOINTS,
-  fetchImpl: FetchLike = fetch
+  fetchImpl: FetchLike = fetch,
+  signal?: AbortSignal
 ): Promise<string> {
+  signal?.throwIfAborted();
   const existing = await authStore.getSecret(PROVIDER_ID);
+  signal?.throwIfAborted();
   if (!existing || !existing.accessToken) {
     throw new Error("Authentication error: not signed in to Antigravity subscription");
   }
 
   // Refresh if expired or within 60 seconds of expiry
-  if (Date.now() >= existing.expiresAt - 60_000) {
-    if (!existing.refreshToken || existing.refreshToken === "managed-by-openclaw") {
+  if (!isStoredAccessTokenFresh(existing)) {
+    if (!hasUsableRefreshToken(existing.refreshToken)) {
       // Managed by host or static token without real refresh token; return as-is
       return existing.accessToken;
     }
-    const refreshed = await refreshAccessToken(authStore, endpoints, fetchImpl);
+    const refreshed = await refreshAccessToken(authStore, endpoints, fetchImpl, signal);
     return refreshed.accessToken;
   }
 

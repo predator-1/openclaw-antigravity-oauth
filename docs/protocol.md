@@ -177,7 +177,7 @@ C returned 429 on its **first generation request in both earlier runs**, on inve
 E2 Interactions requests used `store:false,background:false,stream:false`; those paths on D/A are undocumented cross-host hypotheses. `store` is not a generateContent field. G's scope403 does not establish model entitlement; no new scope/key/login/billing was attempted.
 F `agy -p` (agy 1.5.3, darwin/arm64): once, no extra flags, empty directory; exit0, no MP4/file. It reported `generate_image` as its only media generator and no video tool; its shell attempt was refused by a user-configured deny rule. **Agent output, not proof of backend capability.** E2's two earlier prompts also produced no media and claimed image generation/media inspection but no video/audio generator.
 Static agy 1.5.3 has image plumbing and application Interactions translation; no video application route or Interactions caller-to-host binding was established. Vendored video SDK symbols are leads only.
-Unknown: another Omni body/route, server-side tools, valid `listModelConfigs` input and Interactions transport. No real/playable video was obtained. **Recommendation for #7: do not implement without a working route; the maintainer decides its disposition.** No general upstream-absence conclusion follows.
+Unknown: another Omni body/route, server-side tools, valid `listModelConfigs` input and Interactions transport. No real/playable video was obtained. **#7 closed 2026-11-07 as no route through this login; re-probe when `fetchAvailableModels` or the agy changelog gains video.** No general upstream-absence conclusion follows.
 
 ## Quota payloads
 

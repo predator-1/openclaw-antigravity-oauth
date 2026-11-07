@@ -1,7 +1,7 @@
 {
   "id": "openclaw-antigravity-oauth",
   "name": "Antigravity OAuth",
-  "description": "OpenClaw provider plugin for Antigravity subscription (OAuth)",
+  "description": "Unofficial provider for your own Antigravity subscription, signed in with OAuth. Not affiliated with or endorsed by Google.",
   "categories": [
     "models"
   ],

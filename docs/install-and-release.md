@@ -6,7 +6,8 @@
 - OpenClaw `git:` installs clone the ref and run no build, so the installed ref must contain the compiled `dist/`.
 - For every release CI creates a **release commit**: the tagged `main` tree plus the built `dist/`. Its only parent is the tagged `main` commit, and it never lands on `main`.
 - Tag `v<version>` and branch `release` point at the newest release commit. The source commit of a release is `v<version>^`.
-- Each GitHub Release also carries optional assets: the npm-pack tarball `openclaw-antigravity-oauth-<version>.tgz`, a copy named `openclaw-antigravity-oauth.tgz`, and `SHA256SUMS`.
+- The npm package is `@predator-1/openclaw-antigravity-oauth` (scoped for ClawHub); the plugin id stays `openclaw-antigravity-oauth`.
+- Each GitHub Release also carries optional assets: the npm-pack tarball `openclaw-antigravity-oauth-<version>.tgz` (renamed from npm's scoped `predator-1-openclaw-antigravity-oauth-<version>.tgz`), a copy named `openclaw-antigravity-oauth.tgz`, and `SHA256SUMS`.
 
 ## Install
 
@@ -90,6 +91,33 @@ Rulesets (2026-11-07): `main` takes changes only through a PR with green `build 
 If rulesets block `GITHUB_TOKEN` from pushing `release` or the tag, add a `RELEASE_PUSH_TOKEN` secret (contents write; workflow scope if GitHub refuses the push for touching `.github/workflows`). A tag push made with that token re-triggers the workflow, which skips because the tag already points at a release commit.
 
 Build the tarball locally: `npm pack`. Check a release commit locally: `node scripts/verify-package.js --release-commit=v<version> --parent=<main-sha>`.
+
+## ClawHub (prepared, not published)
+
+Prepared 2026-11-08 ([#31](https://github.com/predator-1/openclaw-antigravity-oauth/issues/31)); nothing is published yet. Rules: [ClawHub publishing](https://docs.openclaw.ai/clawhub/publishing).
+
+- Required metadata: scoped name `@predator-1/...` (the scope must match the publishing owner), `openclaw.compat.pluginApi` and `openclaw.build.openclawVersion` in `package.json`, one manifest category (`models`). `verify:package` fails without the two `openclaw.*` fields.
+- `openclaw.build.openclawVersion` names the host the release was validated against. Raise it when a release is checked on a newer OpenClaw; leave `compat` alone unless support for older hosts changes.
+- `"private": true` stays: ClawHub publishes the built tarball, and it blocks an accidental `npm publish`.
+- Evidence 2026-11-08 (clawhub CLI 0.25.1, OpenClaw 2026.11.1): `clawhub package validate` passes with no issues or deprecations; `clawhub package publish <tgz> --family code-plugin --dry-run` passes without login; a scoped tarball installed over the unscoped one, and a `git:` install updated to a scoped release commit, both keep id `openclaw-antigravity-oauth`. A reinstall from `npm-pack:` leaves the old unscoped project folder under `~/.openclaw/npm/projects/`.
+
+First publish (maintainer, own account):
+
+```bash
+npm i -g clawhub
+clawhub login
+gh release download v<version> -R predator-1/openclaw-antigravity-oauth -p 'openclaw-antigravity-oauth-<version>.tgz'
+clawhub package validate <unpacked-package-folder>
+clawhub package publish openclaw-antigravity-oauth-<version>.tgz --family code-plugin \
+  --source-repo predator-1/openclaw-antigravity-oauth --source-commit "$(git rev-parse v<version>^)" --source-ref v<version> --dry-run
+# same command without --dry-run, then wait for the security checks
+```
+
+Use the tarball from the GitHub Release, not a local build, so the published bytes match `SHA256SUMS` and the attestation. Then:
+
+- Check `openclaw plugins install clawhub:@predator-1/openclaw-antigravity-oauth` in a scratch OpenClaw state and whether the `provenance-invalid` warning is gone; record the result here.
+- Moving an existing install: `openclaw plugins install clawhub:@predator-1/openclaw-antigravity-oauth --force`. The `git:` path keeps working.
+- Next step, not wired yet: `clawhub package trusted-publisher set @predator-1/openclaw-antigravity-oauth --repository predator-1/openclaw-antigravity-oauth --workflow-filename release.yml`, then a publish step in `release.yml` using GitHub OIDC.
 
 ## CI
 

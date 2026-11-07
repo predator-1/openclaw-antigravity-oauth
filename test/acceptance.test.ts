@@ -5282,7 +5282,12 @@ if (args[0] === "models" && args[1] === "list") {
     // 2. Read package.json
     const pkgPath = new URL("../package.json", import.meta.url);
     const pkg = JSON.parse(await fs.promises.readFile(pkgPath, "utf-8"));
-    assert.equal(pkg.name, "openclaw-antigravity-oauth");
+    // Scoped for ClawHub (scope must match the publishing owner); the plugin id stays unscoped.
+    assert.equal(pkg.name, "@predator-1/openclaw-antigravity-oauth");
+    assert.match(pkg.openclaw?.build?.openclawVersion ?? "", /^\d{4}\.\d+\.\d+/);
+    assert.equal(manifest.categories?.length, 1, "ClawHub accepts exactly one category");
+    assert.match(manifest.description, /Unofficial/);
+    assert.match(manifest.description, /Not affiliated with or endorsed by Google/);
     // Plugin version = <agyMajor>.<agyMinor>.<agyPatch*100 + fix> (agy 1.4.12 -> 1.4.1200..1.4.1299).
     const [maj, min, patch] = CLI_VERSION.split(".").map(Number);
     const [pMaj, pMin, pPatch] = String(pkg.version).split(".").map(Number);

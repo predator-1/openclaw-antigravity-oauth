@@ -8,6 +8,10 @@ agy patch = plugin patch ÷ 100). See [docs/install-and-release.md](docs/install
 
 ## [Unreleased]
 
+### Changed
+
+- Prepare ClawHub publishing: npm package renamed to `@predator-1/openclaw-antigravity-oauth` (plugin id and release asset names unchanged), `openclaw.build.openclawVersion` added, plugin description states it is unofficial and not affiliated with Google.
+
 ## [1.5.301] - 2026-11-08
 
 Targets agy 1.5.3. Plugin-only fixes.

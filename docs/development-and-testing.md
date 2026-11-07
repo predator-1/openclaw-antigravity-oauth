@@ -28,7 +28,7 @@ Rules: mock `fetch`, never read the real `HOME`, pin the clock (`t.mock.timers.e
 
 ## `verify:package` (`scripts/verify-package.js`)
 
-- Default: version maps to `CLI_VERSION`; the git-tracked tree plus `dist/` has every manifest entry compiled (`openclaw.extensions`, `main`, `types`) and a `dist/*.js` per `src/*.ts`; `npm pack --dry-run` contains the compiled entry and manifest and no sources or credential-like files. npm is resolved from `process.execPath`.
+- Default: version maps to `CLI_VERSION`; the git-tracked tree plus `dist/` has every manifest entry compiled (`openclaw.extensions`, `main`, `types`) and a `dist/*.js` per `src/*.ts`; `npm pack --dry-run` contains the compiled entry and manifest and no sources or credential-like files; `package.json` has the ClawHub-required `openclaw.compat.pluginApi` and `openclaw.build.openclawVersion`. npm is resolved from `process.execPath`.
 - `--release-commit=<rev> [--parent=<sha>]`: the release commit has exactly one parent (the tagged `main` commit), adds only `dist/`, and its tree passes the same tree check.
 
 ## Integration smoke (local only, real upstream, uses quota)

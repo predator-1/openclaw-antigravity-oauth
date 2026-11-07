@@ -67,6 +67,8 @@ describe("package version and release shape", () => {
     assert.ok(bad.some((p: string) => p.includes("missing from package: dist/index.js")));
     assert.ok(bad.some((p: string) => p.includes("unexpected file in package: src/index.ts")));
     assert.ok(bad.some((p: string) => p.includes("credential-like file")));
+    const noBuild = verify.checkPackedFiles(good, { ...pkg, openclaw: { ...pkg.openclaw, build: undefined } });
+    assert.ok(noBuild.some((p: string) => p.includes("openclaw.build.openclawVersion is required for ClawHub")));
   });
 
   it("dist/ is build output, not source", () => {

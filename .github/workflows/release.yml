@@ -114,7 +114,10 @@ jobs:
         run: |
           mkdir -p release
           tar -cf release/dist.tar dist
-          npm pack --ignore-scripts --pack-destination release
+          # The scoped package packs as predator-1-openclaw-antigravity-oauth-<version>.tgz;
+          # release assets keep their unscoped names.
+          PACKED=$(npm pack --ignore-scripts --pack-destination release --json | node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename)')
+          if [ "$PACKED" != "openclaw-antigravity-oauth-${VERSION}.tgz" ]; then mv "release/$PACKED" "release/openclaw-antigravity-oauth-${VERSION}.tgz"; fi
           cp "release/openclaw-antigravity-oauth-${VERSION}.tgz" release/openclaw-antigravity-oauth.tgz
           (cd release && sha256sum -- *.tgz > SHA256SUMS && sha256sum -- dist.tar > dist.tar.sha256 && cat SHA256SUMS)
           node scripts/release-notes.js "$VERSION" "$GITHUB_REPOSITORY" > release/NOTES.md

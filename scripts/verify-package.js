@@ -36,6 +36,9 @@ export function checkPackedFiles(files, pkg) {
   const problems = [];
   const required = ["package.json", "openclaw.plugin.json", "README.md", ...pkg.openclaw.extensions.map((e) => e.replace(/^\.\//, ""))];
   for (const f of required) if (!files.includes(f)) problems.push(`missing from package: ${f}`);
+  // ClawHub rejects external code plugins without these (docs.openclaw.ai/clawhub/publishing).
+  if (!pkg.openclaw?.compat?.pluginApi) problems.push("package.json openclaw.compat.pluginApi is required for ClawHub");
+  if (!pkg.openclaw?.build?.openclawVersion) problems.push("package.json openclaw.build.openclawVersion is required for ClawHub");
   for (const f of files) {
     if (/^(src|test|scripts|upstream|ci|\.github)\//.test(f)) problems.push(`unexpected file in package: ${f}`);
     if (/(token|credential|\.env|\.pem|\.key)/i.test(path.basename(f))) problems.push(`credential-like file in package: ${f}`);

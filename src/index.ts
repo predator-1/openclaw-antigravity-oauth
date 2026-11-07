@@ -1457,7 +1457,7 @@ function registerAntigravityPlugin(api: OpenClawPluginApi): void {
 export const antigravityPlugin: OpenClawPluginDefinition = definePluginEntry({
   id: PLUGIN_ID,
   name: "Antigravity OAuth",
-  description: "OpenClaw provider plugin for the Antigravity subscription (OAuth)",
+  description: "Unofficial provider for your own Antigravity subscription, signed in with OAuth. Not affiliated with or endorsed by Google.",
   // Host 2026.10.x calls register() only. activate aliases the same function so a
   // second call cannot build a second provider object (Contract §1).
   register: registerAntigravityPlugin,

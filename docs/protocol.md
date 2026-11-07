@@ -144,6 +144,109 @@ Not available on `v1internal` in the forms tried (client identity `antigravity/c
   - `gemini-3.8-flash-tiered`: 200 with text saying it cannot generate video files.
 - `v1internal:predictLongRunning` and `v1internal:generateVideos`: non-JSON 404, the same as the invented control RPC `probeRpcDoesNotExist`.
 
+### Extended research (2026-11-07; quota-stopped)
+
+The original first-probe section above is preserved unchanged. Its matching-404 results do **not** establish general upstream unavailability. This extension is incomplete because the mandatory quota stop fired; it does not justify implementing video generation or closing #7 as unavailable.
+
+#### Provenance and static trace
+
+- Research branch starts at `ff1a2490bb85ce69971c37cbe8f1ea680475f3e2`. Live probes used the existing Mac mini source at `1d79ceb178138a959658034a58feead0aee18cbd`, plugin `1.5.202`, rebuilt before the separately authorized smoke. The probe client remains `antigravity/cli/1.5.2 darwin/arm64`; no identity or runtime update was made.
+- Actual local agy: **1.5.3**, Mach-O arm64, 208900592 bytes, SHA-256 `5e4b545bff4a83a93354fc50c54631cf3e8cd02e1a469087af00929f3fdc4d51`. Earlier box inspection concerned 1.5.2, not this binary. Allowed `--version`, `--help`, and `changelog` were used; no update command. Changelog contains dedicated image-generator-subagent plumbing and media-input fixes, not proof of a video-generation route.
+- Static Go metadata: 183140 functions. Mach-O's on-disk Go `textStart` is zero before relocation; direct ARM64 call decoding used the `__text` address, not zero. `GetImageGenerationModelIds` belongs to `FetchAvailableModelsResponse` and exposes the image-routing list; the model-selection helper directly calls `cache.(*Cache).Get`. The exact cached-field load connecting this getter to the helper was not reconstructed, so that data-flow link remains unverified. The getter can be inlined: a getter symbol alone is not a demonstrated call edge.
+- Application path: `modelapiccpa.(*Client).GetImageGeneration` → `codeassistclient.(*CodeAssistClient).GetImageGeneration` → `getImageGenerationModelID`, `getModelInfoByModelId`, and `GenerateContent`. `GenerateContent` contains routing branches for CCPA, gateway, AICode, business AICode and Vertex AI; its CCPA branch calls `generateContentFromCCPA` → `marshalCCPARequest` / `postCodeAssistBackendRequest`. The binary also contains `v1internal:generateContent` and `v1internal:streamGenerateContent`. This establishes dedicated image application plumbing, **not** which dynamic branch/host a particular agy turn uses.
+- Additional application image path: `oneharness/internal/tools.(*GenerateImageTool).Execute` calls media reading/saving and `core.CallWithRetry`; `jetski/cortex/handlers/imagegen.(*GenerateImageHandler).Handle` has artifact saving and `generator.RunWithAPIRetry`. These are distinct from linked libraries. The alternative `model_api/backends/geminiapi.(*Client).GetImageGeneration` calls `newGenAIClient`, `imageGenerationModelName` and the GenAI SDK's `Models.GenerateContent`.
+- No matching Jetski `GenerateVideo`, `videogen` or `VideoGenerationModelIds` function was found; no `veo-` string, `NewGenerateVideoTool`, `ActionGenerateVideo` or `CortexStepGenerateVideo` string. Linked **vendored** `genai.Models.GenerateVideos`, `GenerateVideosFromSource`, `GenerateVideosOperation`, `:predictLongRunning`, `:fetchPredictOperation` and aiplatform `GenerateVideoResponse` remain leads only. This search does not exclude remote tools, constructed values or another application path.
+- `upstream/agy-fingerprint.json` remains the 1.5.2 baseline. Its CCPA catalog/experiment/admin RPCs motivated the calls below. AICode/business hosts and applet/scotty hosts were not called: the allowed-host list was not widened. No SDK symbol or alternate routing branch was treated as login entitlement.
+
+#### Read-only catalogs and complete new request ledger
+
+Auth came **only** from `resolveSmokeProfile({authSource: "openclaw", agentId: "main"})` in the existing `scripts/integration-smoke.js`. Existing access tokens and project values stayed in memory. No direct store/token reads, token copying, refresh/new login, cookies, scopes, paid key, config/gateway change or redirect following. Scratch scripts and sanitized summaries stayed in `.tmp/`; no raw response or media is committed.
+
+Both CCPA hosts returned 26 raw model entries, no `veo-` string and no video-generation routing list. Matched fields/values: `imageGenerationModelIds: ["gemini-3.1-flash-image"]`, `supportsVideo: true`, and true MIME entries `video/mp4`, `video/webm`, `video/jpeg2000`, `video/videoframe/jpeg2000`, `video/text/timestamp`, `video/audio/s16le`, `video/audio/wav`. These media-input/understanding flags do **not** demonstrate video output. `listExperiments` returned `experimentIds` and `flags`; the field-name traversal yielded no video/veo-named field, but string-valued flag semantics were not exhaustively classified. `fetchAdminControls` returned `{}`. `listModelConfigs` rejected `project`; one schema-informed read-only correction to `{}` also returned 400. Its valid request contract and model contents remain unknown; no more body guessing was attempted.
+
+Each row below is one actual HTTP request. Catalog controls are invented RPCs. Generation candidates are host/path/model combinations; each was sent once, with no retry. `{project}` means the existing in-memory value, never a committed identifier. Catalog responses and generation requests used JSON; no browser session.
+
+| Host | Path (POST) | Model id | Body shape | Control | Result |
+|---|---|---|---|---|---|
+| `daily-cloudcode-pa.googleapis.com` | `/v1internal:fetchAvailableModels` | — | `{project}` | no | 200; 26 models, no veo string |
+| `daily-cloudcode-pa.googleapis.com` | `/v1internal:listModelConfigs` | — | `{project}` | no | 400 INVALID_ARGUMENT; project rejected |
+| `daily-cloudcode-pa.googleapis.com` | `/v1internal:listExperiments` | — | `{project}` | no | 200; experimentIds, flags |
+| `daily-cloudcode-pa.googleapis.com` | `/v1internal:fetchAdminControls` | — | `{project}` | no | 200; empty object |
+| `daily-cloudcode-pa.googleapis.com` | `/v1internal:videoResearchNoSuchRpc` | — | `{project}` | yes | 404; non-JSON |
+| `cloudcode-pa.googleapis.com` | `/v1internal:fetchAvailableModels` | — | `{project}` | no | 200; 26 models, no veo string |
+| `cloudcode-pa.googleapis.com` | `/v1internal:listModelConfigs` | — | `{project}` | no | 400 INVALID_ARGUMENT; project rejected |
+| `cloudcode-pa.googleapis.com` | `/v1internal:listExperiments` | — | `{project}` | no | 200; experimentIds, flags |
+| `cloudcode-pa.googleapis.com` | `/v1internal:fetchAdminControls` | — | `{project}` | no | 200; empty object |
+| `cloudcode-pa.googleapis.com` | `/v1internal:videoResearchNoSuchRpc` | — | `{project}` | yes | 404; non-JSON |
+| `daily-cloudcode-pa.googleapis.com` | `/v1internal:listModelConfigs` | — | `{}` | no | 400 INVALID_ARGUMENT; request contract unresolved |
+| `cloudcode-pa.googleapis.com` | `/v1internal:listModelConfigs` | — | `{}` | no | 400 INVALID_ARGUMENT; request contract unresolved |
+| `daily-cloudcode-pa.googleapis.com` | `/v1internal:generateContent` | `veo-research-does-not-exist` | `{project,model,request}` | yes | 404 NOT_FOUND |
+| `daily-cloudcode-pa.googleapis.com` | `/v1internal:generateContent` | `veo-3.1-fast-generate-preview` | `{project,model,request}` | no | 404 NOT_FOUND |
+| `daily-cloudcode-pa.googleapis.com` | `/v1internal:generateContent` | `veo-3.1-generate-preview` | `{project,model,request}` | no | 404 NOT_FOUND |
+| `daily-cloudcode-pa.googleapis.com` | `/v1internal:generateContent` | `veo-3.1-lite-generate-preview` | `{project,model,request}` | no | 404 NOT_FOUND |
+| `cloudcode-pa.googleapis.com` | `/v1internal:generateContent` | `veo-research-does-not-exist` | `{project,model,request}` | yes | 429 RESOURCE_EXHAUSTED; STOP |
+
+Generation body: `{project, model, request: {contents: [{role: "user", parts: [{text: "Generate a short silent video of a red ball moving left to right on a plain white background."}]}], generationConfig: {responseModalities: ["VIDEO"]}}}`. On daily CCPA, all three named models and the invented model returned identical `404 NOT_FOUND: Requested entity was not found.` This says only that these forms did not distinguish real ids from the control. The first cloudcode generation-shaped request, itself the invented-model control, returned **429 RESOURCE_EXHAUSTED**, `Resource has been exhausted (e.g. check quota).` It gives no positive model/route evidence.
+
+Accounting for this extension: **12 read-only requests + 5 generation-shaped POSTs** (3 named-model candidates, 2 invented-model controls). No 401/403 occurred; 400 is separate from 404; 429 is a quota stop, not an availability verdict. No 2xx generation/operation, polling, video download or file validation occurred. The separately authorized eight-check smoke was not rerun and is not a video probe.
+
+#### Unsent matrix and prompted runs
+
+The route plan had 19 rows; the first 5 were sent and the remaining 14 below were **not sent**. No host substitution, retry, paid credentials or prompted run followed the 429. These are an audit of the interrupted plan, not a recommendation to retry retired preview ids automatically.
+
+| Host | Path (POST; not sent) | Model id | Control | Result |
+|---|---|---|---|---|
+| `cloudcode-pa.googleapis.com` | `/v1internal:generateContent` | `veo-3.1-fast-generate-preview` | no | NOT SENT: quota stop |
+| `cloudcode-pa.googleapis.com` | `/v1internal:generateContent` | `veo-3.1-generate-preview` | no | NOT SENT: quota stop |
+| `cloudcode-pa.googleapis.com` | `/v1internal:generateContent` | `veo-3.1-lite-generate-preview` | no | NOT SENT: quota stop |
+| `daily-cloudcode-pa.googleapis.com` | `/v1internal/models/veo-research-does-not-exist:predictLongRunning` | `veo-research-does-not-exist` | yes | NOT SENT: quota stop |
+| `daily-cloudcode-pa.googleapis.com` | `/v1internal/models/veo-3.1-fast-generate-preview:predictLongRunning` | `veo-3.1-fast-generate-preview` | no | NOT SENT: quota stop |
+| `cloudcode-pa.googleapis.com` | `/v1internal/models/veo-research-does-not-exist:predictLongRunning` | `veo-research-does-not-exist` | yes | NOT SENT: quota stop |
+| `cloudcode-pa.googleapis.com` | `/v1internal/models/veo-3.1-fast-generate-preview:predictLongRunning` | `veo-3.1-fast-generate-preview` | no | NOT SENT: quota stop |
+| `cloudcode-pa.googleapis.com` | `/v1internal:videoResearchNoSuchVideoRpc` | `veo-3.1-fast-generate-preview` | yes | NOT SENT: quota stop |
+| `cloudcode-pa.googleapis.com` | `/v1internal:predictLongRunning` | `veo-3.1-fast-generate-preview` | no | NOT SENT: quota stop |
+| `cloudcode-pa.googleapis.com` | `/v1internal:generateVideos` | `veo-3.1-fast-generate-preview` | no | NOT SENT: quota stop |
+| `generativelanguage.googleapis.com` | `/v1beta/models/veo-research-does-not-exist:predictLongRunning` | `veo-research-does-not-exist` | yes | NOT SENT: quota stop |
+| `generativelanguage.googleapis.com` | `/v1beta/models/veo-3.1-fast-generate-preview:predictLongRunning` | `veo-3.1-fast-generate-preview` | no | NOT SENT: quota stop |
+| `aiplatform.googleapis.com` | `/v1/projects/<PROJECT>/locations/us-central1/publishers/google/models/veo-research-does-not-exist:predictLongRunning` | `veo-research-does-not-exist` | yes | NOT SENT: quota stop |
+| `aiplatform.googleapis.com` | `/v1/projects/<PROJECT>/locations/us-central1/publishers/google/models/veo-3.1-fast-generate-preview:predictLongRunning` | `veo-3.1-fast-generate-preview` | no | NOT SENT: quota stop |
+
+Planned LRO body (not sent): `instances: [{prompt: "A red ball moves left to right on a plain white background."}]`, `parameters: {sampleCount: 1, durationSeconds: 4, aspectRatio: "16:9"}`; flat CCPA forms additionally carry `project` and `model`. This body has not been accepted by any of these routes. No Vertex region, public-API model id or async polling/delivery contract was validated.
+
+Prompted agy results: **video prompt: NOT RUN; media-tool prompt: NOT RUN**, both because of the mandatory quota stop. There is no agent claim, permission-prompt observation, produced video or tool inventory to report. Public documentation was then read without authenticated traffic; this is not an attempt to resume the stopped matrix.
+
+#### Public Gemini and Antigravity documentation (read 2026-11-07)
+
+- [Google One plan comparison](https://one.google.com/intl/en_us/about/google-ai-plans/): Google AI **Plus, Pro and Ultra** include Gemini/Flow video access at different limits; the comparison names **Omni Flash** for video-generation model access. Antigravity is separately described as an agent/coding product with plan-dependent model/rate limits. The maintainer's actual plan remains unrecorded; no plan was inferred from login success.
+- [Gemini subscriptions](https://gemini.google/subscriptions/): Plus and Pro explicitly include video generation, Ultra includes Pro's features with higher limits. The same fetched page's FAQ still names a Pro **Veo 3.1 Lite** trial and Ultra **Veo 3.1**, while its Flow sections name **Gemini Omni Flash**. Preserve this documentation discrepancy instead of inventing one authoritative app model for every plan/region.
+- [Gemini API video guide](https://aistudio.google.com/docs/video): current recommended video model is **`gemini-omni-1.2-flash`**, with 3–15-second native-audio video and conversational editing through the Interactions API. It explicitly says `veo-3.1-generate-preview`, `veo-3.1-fast-generate-preview` and `veo-3.1-lite-generate-preview` were **shut down in the Gemini API on 2026-10-22**. This is public-API retirement evidence, not proof of identical CCPA alias lifecycle or the cause of the CCPA 404s. Omni was discovered after the quota stop and was not probed.
+- [Interactions API](https://aistudio.google.com/docs/interactions): a separate API, generally available since June 2026; interactions are stored by default, `store=false` opts out. A future generation-only investigation must avoid enabling persisted conversation state silently. This guide's supported-model table does not list Omni although the video guide names it; the exact current video request contract needs its specific guide, not inference from generic examples.
+- [Antigravity plans](https://antigravity.google/docs/plans) and [models](https://antigravity.google/docs/models): baseline CLI/product access, reasoning-model choices, plan quotas and optional AI-credit overages; the additional-model list names **Nano Banana 2 for the generative image tool**, not a video tool. These opened pages do not document a video-generation endpoint or transfer the Gemini app's video entitlement to this OAuth login. Absence from these pages is not proof of general upstream absence.
+- [Gemini API billing](https://aistudio.google.com/docs/billing) describes project/Cloud Billing and prepay/postpay tiers, not automatic Antigravity token entitlement. [Google AI plan credits in AI Studio](https://aistudio.google.com/learn/use-google-ai-plan-credits-in-ai-studio), updated 2026-11-03, says eligible Pro/Ultra plans include monthly **Google Cloud** credits usable in AI Studio only after account linking and at least a **$5 prepaid deposit**; consumer Google One AI credits are separate and unsupported there. Thus “subscription benefits can never fund any API” would also be false. No billing link, deposit, new login/key, scope change or API entitlement was attempted or established here.
+
+#### Remaining proof, approvals and recommendation for #7
+
+**Recommendation: keep #7 open; do not implement yet and do not close it as unavailable upstream.** No real/playable video was produced. Matched 404s, vendored SDK symbols, input-media flags and app plan pages cannot establish either route success or global unavailability. Unknowns include a current Omni route/entitlement under this login, valid `listModelConfigs` input, untried endpoint shapes, remote tools, and async polling/delivery/quota behavior.
+
+Maintainer authorization to resume after the quota stop is needed before any remaining live check. Re-scope the old preview-id plan using the current public video docs first; never repeat a sent candidate under the original one-request budget. If a route needs another login, OAuth scope, paid API setup/key or host outside the four-host list, stop that path for separate approval. Browser cookies/web sessions remain excluded.
+
+The two original prompted checks are still pending. Exact proposed invocations (not run), each in its own newly created empty directory:
+
+```sh
+mkdir .tmp/video-research-video-prompt-next && cd .tmp/video-research-video-prompt-next
+"$HOME/.local/bin/agy" -p "Using only a native video-generation tool, generate exactly one short silent video of a red ball moving left to right and save it inside this directory. Do not use shell commands, code, browsers, image generators, plugins, another login, or retries. If no native video-generation tool is available, say so and stop. Do not read other files."
+```
+
+```sh
+mkdir .tmp/video-research-media-tools-next && cd .tmp/video-research-media-tools-next
+"$HOME/.local/bin/agy" -p "Name the built-in image, audio and video generation or understanding tools actually exposed in this session. Distinguish visible tools from general model capabilities. Do not execute tools, generate media, run commands, read files, browse, install anything or log in."
+```
+
+Do not pass any additional agy flag or bypass a permission prompt. These would establish only what the agent exposes/does; an unsupported claim is still not a working route.
+
+Traffic capture: **not performed**. The issue's prerequisite for stage 6 (exhaust stages 1–5 without a route) has not been reached because quota stopped stage 3 and prevented stage 4. No concrete capture command is proposed prematurely as a quota workaround. If the remaining allowed checks are later exhausted, propose a separately reviewed exact capture/redaction command to identify the native tool's host/path and response type, with no credential/payload logging; TLS connection metadata alone cannot prove an HTTP video route. Trust-store changes, private-log reads and raw HTTP dumps are not implicitly authorized.
+
+
 ## Quota payloads
 
 - `retrieveUserQuotaSummary`: groups with buckets `{ remainingFraction, resetTime, window | bucketId | displayName }`; window enums vary (`weekly`/`WEEKLY`, `5h`/`FIVE_HOUR`) and are normalized.

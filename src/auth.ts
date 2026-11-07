@@ -693,12 +693,29 @@ function getProfileHint(profileId?: string): string {
   return ` [profile: ${hash}]`;
 }
 
+const ACCESS_TOKEN_EXPIRY_SKEW_MS = 60_000;
+const HOST_MANAGED_REFRESH_TOKEN = "managed-by-openclaw";
+
+function hasUsableRefreshToken(token: string | undefined): boolean {
+  return Boolean(token?.trim() && token.trim() !== HOST_MANAGED_REFRESH_TOKEN);
+}
+
+function isStoredAccessTokenFresh(credential: AntigravityAuthCredentials): boolean {
+  return Date.now() < credential.expiresAt - ACCESS_TOKEN_EXPIRY_SKEW_MS;
+}
+
+/** Whether a stored image credential can be used directly or refreshed locally. */
+export function canUseStoredAccessToken(credential: AntigravityAuthCredentials): boolean {
+  return Boolean(credential.accessToken &&
+    (isStoredAccessTokenFresh(credential) || hasUsableRefreshToken(credential.refreshToken)));
+}
+
 export async function refreshOAuthCredential(
   credential: OpenClawOAuthCredential,
   endpoints: AntigravityEndpoints = DEFAULT_ENDPOINTS,
   fetchImpl: FetchLike = fetch
 ): Promise<OpenClawOAuthCredential> {
-  if (!credential.refresh || credential.refresh === "managed-by-openclaw") {
+  if (!hasUsableRefreshToken(credential.refresh)) {
     throw new Error("Authentication error: missing refresh token for Antigravity credential");
   }
 
@@ -825,7 +842,7 @@ export async function refreshAccessToken(
   fetchImpl: FetchLike = fetch
 ): Promise<AntigravityAuthCredentials> {
   const existing = await authStore.getSecret(PROVIDER_ID);
-  if (!existing || !existing.refreshToken || existing.refreshToken === "managed-by-openclaw") {
+  if (!existing || !hasUsableRefreshToken(existing.refreshToken)) {
     throw new Error("Authentication error: no stored Antigravity subscription credential");
   }
 
@@ -868,8 +885,8 @@ export async function getValidAccessToken(
   }
 
   // Refresh if expired or within 60 seconds of expiry
-  if (Date.now() >= existing.expiresAt - 60_000) {
-    if (!existing.refreshToken || existing.refreshToken === "managed-by-openclaw") {
+  if (!isStoredAccessTokenFresh(existing)) {
+    if (!hasUsableRefreshToken(existing.refreshToken)) {
       // Managed by host or static token without real refresh token; return as-is
       return existing.accessToken;
     }

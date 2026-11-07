@@ -249,3 +249,45 @@ describe("image host auth failures", () => {
     assert.equal(resolved, 1);
   });
 });
+
+
+describe("image stored credential host boundary", () => {
+  it("falls through for a native host store without getSecret", async () => {
+    let resolved = 0;
+    const provider = buildAntigravityImageGenerationProvider({
+      loadHostAuth: async () => ({ resolveApiKeyForProvider: async () => {
+        resolved++; return { apiKey: "host-fixture" };
+      } }),
+      fetchFn: async (_url, init) => {
+        assert.equal((init?.headers as Record<string, string>).Authorization, "Bearer host-fixture");
+        return imageResponse();
+      }
+    });
+    await provider.generateImage({ prompt: "draw a star", authStore: { profiles: {} } as any });
+    assert.equal(resolved, 1);
+  });
+
+  for (const refreshToken of ["", " ", "managed-by-openclaw"]) {
+    it(`uses host auth inside the 60-second skew without usable refresh (${JSON.stringify(refreshToken)})`, async () => {
+      const store = new InMemoryAuthProfileStore();
+      await store.setSecret("antigravity", {
+        accessToken: "near-expiry-fixture", refreshToken, expiresAt: Date.now() + 30_000
+      });
+      let resolved = 0;
+      let calls = 0;
+      const provider = buildAntigravityImageGenerationProvider({
+        defaultAuthStore: store,
+        loadHostAuth: async () => ({ resolveApiKeyForProvider: async () => {
+          resolved++; return { apiKey: "host-fixture" };
+        } }),
+        fetchFn: async (url, init) => {
+          calls++; assert.notEqual(String(url), DEFAULT_ENDPOINTS.tokenUrl);
+          assert.equal((init?.headers as Record<string, string>).Authorization, "Bearer host-fixture");
+          return imageResponse();
+        }
+      });
+      await provider.generateImage({ prompt: "draw a star" });
+      assert.equal(resolved, 1); assert.equal(calls, 1);
+    });
+  }
+});

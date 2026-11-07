@@ -1,5 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
-import { getValidAccessToken, isAntigravityConfigured, parseFormattedApiKey } from "./auth.js";
+import { canUseStoredAccessToken, getValidAccessToken, isAntigravityConfigured, parseFormattedApiKey } from "./auth.js";
 import {
   DEFAULT_ENDPOINTS,
   DEFAULT_IMAGE_MODEL,
@@ -127,12 +127,10 @@ export async function executeAntigravityImageGeneration(
   // B. Check explicit authStore
   if (!accessToken) {
     const store = req.authStore ?? options.defaultAuthStore;
-    if (store) {
+    if (store && typeof store.getSecret === "function") {
       const secret = await store.getSecret(PROVIDER_ID);
       if (secret?.accessToken) {
-        const refreshToken = secret.refreshToken?.trim();
-        const canRefresh = Boolean(refreshToken && refreshToken !== "managed-by-openclaw");
-        if (secret.expiresAt > Date.now() || canRefresh) {
+        if (canUseStoredAccessToken(secret)) {
           accessToken = await getValidAccessToken(store, endpoints, fetchImpl);
           projectId = secret.projectId || DEFAULT_PROJECT_ID;
         }

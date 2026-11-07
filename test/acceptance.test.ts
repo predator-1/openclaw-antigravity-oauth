@@ -3606,6 +3606,26 @@ if (args[0] === "models" && args[1] === "list") {
     assert.ok(registeredImageProvider.capabilities.geometry?.sizes?.includes("1024x1024"));
   });
 
+  it("Image Generation: rejects unsupported models before auth or fetch", async () => {
+    let fetchCalls = 0;
+    const provider = buildAntigravityImageGenerationProvider({
+      fetchFn: async () => {
+        fetchCalls++;
+        throw new Error("Unexpected upstream request");
+      }
+    });
+    for (const model of ["gemini-3.8-flash", "antigravity/gemini-3.8-flash", "imagen-4", "antigravity/"]) {
+      await assert.rejects(provider.generateImage({ prompt: "draw a star", model }), (err: Error) => {
+        assert.equal(
+          err.message,
+          `Unsupported Antigravity image model "${model}". Supported model: gemini-3.1-flash-image. Set agents.defaults.mediaModels.image or pass a per-call model override.`
+        );
+        return true;
+      });
+    }
+    assert.equal(fetchCalls, 0);
+  });
+
   it("29. Image Generation: executes generation and editing with bare token, stored project, and generationConfig", async () => {
     let capturedHeaders: Record<string, string> = {};
     let capturedBody: Record<string, unknown> | undefined;
@@ -3681,6 +3701,14 @@ if (args[0] === "models" && args[1] === "list") {
     // 4. GenerationConfig verification
     assert.deepEqual(reqObj.generationConfig?.responseModalities, ["TEXT", "IMAGE"]);
     assert.equal(reqObj.generationConfig?.imageConfig?.aspectRatio, "1:1");
+
+    // Accepted spellings all send the one supported upstream image model.
+    for (const model of [undefined, "", " \t\n ", "gemini-3.1-flash-image", "antigravity/gemini-3.1-flash-image", "flash-image", "antigravity/flash-image"]) {
+      capturedBody = undefined;
+      const generated = await provider.generateImage({ prompt: "draw a star", ...(model !== undefined ? { model } : {}) });
+      assert.equal(generated.model, DEFAULT_IMAGE_MODEL);
+      assert.equal((capturedBody as Record<string, unknown> | undefined)?.model, DEFAULT_IMAGE_MODEL);
+    }
   });
 
   it("30. Image Generation: maps HTTP 429 quota exhaustion and HTTP errors cleanly", async () => {
@@ -3723,11 +3751,30 @@ if (args[0] === "models" && args[1] === "list") {
       },
       (err: Error) => {
         assert.match(err.message, /Quota exceeded HTTP 429/);
+        assert.ok(err.message.includes(DEFAULT_IMAGE_MODEL));
         assert.match(err.message, /RESOURCE_EXHAUSTED/);
         assert.match(err.message, /Resets in/);
         return true;
       }
     );
+    let fetchCalls = 0;
+    const notFoundProvider = buildAntigravityImageGenerationProvider({
+      defaultAuthStore: authStore,
+      fetchFn: async () => {
+        fetchCalls++;
+        return new Response(JSON.stringify({ error: { status: "NOT_FOUND", message: "Requested entity was not found." } }), { status: 404 });
+      }
+    });
+    await assert.rejects(
+      notFoundProvider.generateImage({ prompt: "draw a star", model: DEFAULT_IMAGE_MODEL }),
+      (err: Error) => {
+        assert.match(err.message, /Image generation failed with HTTP 404/);
+        assert.ok(err.message.includes(DEFAULT_IMAGE_MODEL));
+        assert.match(err.message, /NOT_FOUND/);
+        return true;
+      }
+    );
+    assert.equal(fetchCalls, 1, "A valid-model 404 must not retry or substitute a model");
   });
 
   it("31. Image Generation: respects timeout and abort signals", async () => {

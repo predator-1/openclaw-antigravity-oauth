@@ -23,7 +23,7 @@ npm run sync:models:prune    # apply and remove the static models.providers.anti
 - **Chat:** `antigravity/<id>` model refs; see [features.md](features.md#models).
 - **Web search:** auto-detected (order 35) when `tools.web.search.provider` is unset; set `tools.web.search.provider` to `antigravity-search` to force it. Explicit selection disables fallback.
 - **Web fetch:** fallback provider `antigravity-fetch` (order 40). OpenClaw tries its own fetch first; sandboxed `web_fetch` skips this plugin. Set `tools.web.fetch.provider` to `antigravity-fetch` to select it after that fallback path.
-- **Image generation:** explicit only, `--model antigravity/gemini-3.1-flash-image`. The plugin sets no image `autoPriority`, so the user's default image generator stays default.
+- **Image generation:** the host's `image_generate` selects its model from `agents.defaults.mediaModels.image` ("Image Generation Model"); for this provider select `antigravity/gemini-3.1-flash-image` or pass a per-call `--model antigravity/gemini-3.1-flash-image`. The plugin and model-sync script never write that setting. The plugin sets no image `autoPriority`; accepted ids and validation: [features.md](features.md#image-generation).
 - **Media understanding:** registered with `autoPriority` 90 for image, audio and video; default model `gemini-3.8-flash`.
 
 ## Local SDK types

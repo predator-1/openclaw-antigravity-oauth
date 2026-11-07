@@ -83,7 +83,7 @@ The plugin previously ignored `options.responseFormat`. It now maps it on Gemini
 
 ## Image generation
 
-- `api.registerImageGenerationProvider`; id `antigravity`; only model `gemini-3.1-flash-image` (the only image model that resolves on `v1internal`; `imagen-*`, `gemini-3-pro-image`, `gemini-2.5-flash-image` return 404).
+- `api.registerImageGenerationProvider`; id `antigravity`; supported model `gemini-3.1-flash-image`. Undefined, empty or whitespace-only input defaults to that model; that id and `flash-image` accept an optional `antigravity/` prefix. A bare `antigravity/` prefix is unsupported. Any other id is rejected before auth or an upstream request; no substitution or chat-to-image mapping (2026-11-07, `resolveImageModel` and hermetic acceptance tests). HTTP failures name the model. Maintainer-reported live smoke (2026-11-07): `gemini-3.1-flash-image` generated one image; the smoke calls the plugin directly, not the host `image_generate`. Earlier 404s on other image models: [protocol.md](protocol.md#errors).
 - Generate and edit (up to 5 input images), 1 output, JPEG. Sizes `1024x1024`, `1024x1536`, `1536x1024`, `1024x1792`, `1792x1024`; aspect ratios `1:1 2:3 3:2 3:4 4:3 4:5 5:4 9:16 16:9 21:9`; resolutions `1K 2K 4K`.
 - One retry when a response has no image, no block and `finishReason` `STOP` or missing. Blocks report `blockReason`/`finishReason` and high-probability safety categories.
 - Timeout `DEFAULT_IMAGE_TIMEOUT_MS` = 180 s; abort signals respected. 429 reports the reset time.

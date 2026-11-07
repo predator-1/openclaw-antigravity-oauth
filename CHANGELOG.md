@@ -11,6 +11,7 @@ agy patch = plugin patch ÷ 100). See [docs/install-and-release.md](docs/install
 ### Changed
 
 - The README install command works in a terminal and in a non-interactive shell (`--force --accept-capabilities`); the docs correct the earlier note and cover updating with the Gateway running or stopped.
+- GitHub secret scanning skips the two files that hold agy's public OAuth client.
 
 ## [1.5.201] - 2026-11-07
 

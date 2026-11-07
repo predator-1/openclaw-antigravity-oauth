@@ -10,6 +10,7 @@ agy patch = plugin patch ÷ 100). See [docs/install-and-release.md](docs/install
 
 ### Fixed
 
+- Refresh expired stored image credentials when possible; otherwise resolve authentication through the host instead of sending an expired credential.
 - Keep image-generation timeout and caller cancellation active through success and error response bodies.
 
 ## [1.5.202] - 2026-11-07

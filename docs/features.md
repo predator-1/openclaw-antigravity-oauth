@@ -88,6 +88,8 @@ The plugin previously ignored `options.responseFormat`. It now maps it on Gemini
 - One retry when a response has no image, no block and `finishReason` `STOP` or missing. Blocks report `blockReason`/`finishReason` and high-probability safety categories.
 - Timeout `DEFAULT_IMAGE_TIMEOUT_MS` = 180 s; abort signals respected. 429 reports the reset time.
 
+Image stored-auth scope (2026-11-07, `src/index.ts` registration/auth method and published `openclaw@2026.10.10` `runtime-jO-vrhdY.mjs`): a fresh registration creates an empty in-memory default store; ordinary generation forwards the caller's auth store, not a hydrated plugin store. Only the same registration's OAuth method (or an explicitly supplied plugin store) populates the default; chat uses a separate turn store. Thus the stored-token path is conditional, not evidence that the reported installed inference used it. Keep the fix local: use the existing refresh helper when refreshable, and let expired non-refreshable credentials fall through to SDK resolution. No 401 failover is added. Installed SDK unavailable; this is published-source evidence, not a live trace.
+
 ## Media understanding
 
 - `api.registerMediaUnderstandingProvider`; capabilities image, audio, video; native document input `pdf`; default model `gemini-3.8-flash`.

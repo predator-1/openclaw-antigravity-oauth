@@ -1,4 +1,4 @@
-import { isAntigravityConfigured, parseFormattedApiKey } from "./auth.js";
+import { getValidAccessToken, isAntigravityConfigured, parseFormattedApiKey } from "./auth.js";
 import {
   DEFAULT_ENDPOINTS,
   DEFAULT_IMAGE_MODEL,
@@ -109,8 +109,13 @@ export async function executeAntigravityImageGeneration(
     if (store) {
       const secret = await store.getSecret(PROVIDER_ID);
       if (secret?.accessToken) {
-        accessToken = secret.accessToken;
-        projectId = secret.projectId || DEFAULT_PROJECT_ID;
+        const refreshToken = secret.refreshToken?.trim();
+        const canRefresh = Boolean(refreshToken && refreshToken !== "managed-by-openclaw");
+        if (secret.expiresAt > Date.now() || canRefresh) {
+          accessToken = await getValidAccessToken(store, endpoints, fetchImpl);
+          projectId = secret.projectId || DEFAULT_PROJECT_ID;
+        }
+        // Expired host-managed/static credentials must resolve through the host below.
       }
     }
   }

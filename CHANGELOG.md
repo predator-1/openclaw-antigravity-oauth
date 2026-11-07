@@ -8,6 +8,10 @@ agy patch = plugin patch ÷ 100). See [docs/install-and-release.md](docs/install
 
 ## [Unreleased]
 
+### Fixed
+
+- Correct quota-reset countdowns for millisecond and fractional delays; ignore malformed reset delays.
+
 ## [1.5.203] - 2026-11-07
 
 Targets agy 1.5.2. Plugin-only fixes.

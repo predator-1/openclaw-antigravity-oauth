@@ -43,3 +43,38 @@ describe("shared error sanitization", () => {
     assert.match(out, /network failure/); assert.ok(!out.includes(opaque));
   });
 });
+
+
+describe("bounded sanitizer input and fragment preservation", () => {
+  const limit = 16 * 1024;
+  const marker = " [TRUNCATED]";
+
+  it("caps one MiB of unbalanced brackets before JSON or text processing", () => {
+    const output = sanitizeError("[".repeat(1024 * 1024));
+    assert.equal(output, "[".repeat(limit) + marker);
+    assert.equal(Buffer.byteLength(output), limit + marker.length);
+  });
+
+  it("still redacts a secret inside the retained prefix of oversized input", () => {
+    const input = `retained token=${opaque} ` + "[".repeat(1024 * 1024);
+    const output = sanitizeError(input);
+    assert.ok(!output.includes(opaque));
+    assert.match(output, /token=\[REDACTED\]/);
+    assert.ok(output.endsWith(marker));
+    assert.ok(Buffer.byteLength(output) <= limit + marker.length);
+  });
+
+  it("uses a UTF-8 byte limit across messages and causes", () => {
+    const output = sanitizeError(new Error("prefix", { cause: new Error("é".repeat(limit)) }));
+    assert.ok(output.startsWith("prefix: "));
+    assert.ok(output.endsWith(marker));
+    assert.ok(Buffer.byteLength(output) <= limit + marker.length);
+    assert.ok(!output.includes("\uFFFD"));
+  });
+
+  it("preserves surrounding text and valid redacted JSON without double-redaction", () => {
+    const output = sanitizeError('failed: {"token":"sv"} tail');
+    assert.equal(output, 'failed: {"token":"[REDACTED]"} tail');
+    assert.deepEqual(JSON.parse(output.slice("failed: ".length, -" tail".length)), { token: "[REDACTED]" });
+  });
+});

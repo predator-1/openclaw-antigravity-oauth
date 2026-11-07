@@ -1,15 +1,32 @@
+const MAX_INPUT_BYTES = 16 * 1024;
+const TRUNCATION_MARKER = " [TRUNCATED]";
+
 /** Redact credentials and account identifiers without serializing raw error objects. */
 export function sanitizeError(error: unknown): string {
   if (!error) return "unknown error";
   const messages: string[] = [];
   const seen = new Set<unknown>();
+  let remaining = MAX_INPUT_BYTES;
+  let truncated = false;
   for (let current: unknown = error; current && messages.length < 3 && !seen.has(current);) {
     seen.add(current);
     const item = current as { message?: unknown; cause?: unknown };
-    messages.push(typeof item.message === "string" ? item.message : String(current));
+    const message = typeof item.message === "string" ? item.message : String(current);
+    const separatorBytes = messages.length ? 2 : 0;
+    if (remaining <= separatorBytes) { truncated = true; break; }
+    remaining -= separatorBytes;
+    // Slice first: even UTF-8 encoding only sees a bounded prefix, never the full input.
+    const prefix = message.slice(0, remaining);
+    const encoded = Buffer.from(prefix, "utf8");
+    // Streaming decode omits any partial trailing UTF-8 code point at the byte limit.
+    const retained = new TextDecoder().decode(encoded.subarray(0, remaining), { stream: true });
+    messages.push(retained);
+    truncated = prefix.length < message.length || encoded.length > remaining;
+    remaining -= Buffer.byteLength(retained, "utf8");
+    if (truncated) break;
     current = item.cause;
   }
-  return redactText(messages.join(": ")).trim();
+  return redactText(messages.join(": ")).trim() + (truncated ? TRUNCATION_MARKER : "");
 }
 
 const SECRET_KEY = /^(?:access_?token|refresh_?token|id_?token|client_?secret|api_?key|token|secret|x-goog-api-key|authorization)$/i;
@@ -45,7 +62,7 @@ function redactJsonFragments(text: string): string {
       else if ((char === "}" || char === "]") && --depth === 0) {
         try {
           const value: unknown = JSON.parse(text.slice(start, end + 1));
-          output += text.slice(cursor, start) + JSON.stringify(redactJson(value));
+          output += redactPlainText(text.slice(cursor, start)) + JSON.stringify(redactJson(value));
           cursor = end + 1;
           start = end;
         } catch { /* Not JSON: field redaction still applies. */ }
@@ -53,7 +70,7 @@ function redactJsonFragments(text: string): string {
       }
     }
   }
-  return output + text.slice(cursor);
+  return output + redactPlainText(text.slice(cursor));
 }
 
 function redactText(text: string): string {
@@ -62,7 +79,11 @@ function redactText(text: string): string {
     const parsed: unknown = JSON.parse(text);
     if (parsed && typeof parsed === "object") return JSON.stringify(redactJson(parsed));
   } catch { /* Plain diagnostic text or embedded JSON: redact fields below. */ }
-  return redactJsonFragments(text)
+  return redactJsonFragments(text);
+}
+
+function redactPlainText(text: string): string {
+  return text
     .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, "[REDACTED_EMAIL]")
     .replace(/\b(Bearer|Basic)\s+[a-zA-Z0-9._~+/=-]+/gi, "$1 [REDACTED_TOKEN]")
     .replace(/\bya29\.[a-zA-Z0-9._-]+/g, "[REDACTED_TOKEN]")

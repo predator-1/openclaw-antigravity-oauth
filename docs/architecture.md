@@ -47,6 +47,7 @@ A turn writes only what OpenClaw writes for its auth profile and caches. Never t
 | `search.ts` | `antigravity-search` web search provider |
 | `fetch.ts` | `antigravity-fetch` web-fetch provider |
 | `image.ts` | image generation provider |
+| `sanitize.ts` | shared credential and account-identifier error redaction for runtime and smoke |
 | `media.ts` | media understanding provider (image, audio, video, pdf) |
 | `constants.ts` | endpoints, OAuth client and scopes, `CLI_VERSION`, User-Agent (`mapAgyOsArch`: honest host os/arch), native tool list, non-chat filters |
 | `types.ts`, `ambient.d.ts` | shared types, host SDK module declarations |

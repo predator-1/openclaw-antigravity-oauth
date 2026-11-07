@@ -329,8 +329,7 @@ export async function executeAntigravityImageGeneration(
             } catch { /* Reset metadata is optional; never include the raw payload. */ }
           }
           const resetNotice = reset ? ` (Resets ${reset.relative})` : "";
-          const label = terminal ? "Quota exceeded" : classification.type === "transient_rate_limit"
-            ? "Image generation rate or capacity limit" : "Image generation failed with";
+          const label = terminal ? "Quota exceeded" : "Image generation rate or capacity limit";
           throw Object.assign(new Error(
             `[antigravity] ${label} HTTP 429 (model ${canonicalId}): ${classification.errorSummary}${resetNotice}`
           ), {

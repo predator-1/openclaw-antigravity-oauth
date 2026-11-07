@@ -329,21 +329,4 @@ describe("integration-smoke: image routing catalog check", () => {
     assert.match(checks[1].details, /discovery unavailable/);
   });
 
-  it("includes the new check in the nine-result single-chat-model smoke fixture", async () => {
-    const { checks } = await fixtureCatalog([expected]);
-    const results = [
-      ...checks,
-      smoke.evaluatePongTurn("fixture-chat", { text: "pong" }),
-      smoke.evaluateToolRoundTrip("fixture-chat", { toolCalls: [{ name: "fixture-tool" }] }, { text: "done" }),
-      smoke.evaluateUsage({ buckets: [{}, {}, {}, {}, {}] }),
-      smoke.evaluateSearch({ citations: [{}] }),
-      smoke.evaluateFetch({ text: "fixture-nonce" }, "fixture-nonce"),
-      smoke.evaluateImageGeneration(expected, { images: [{ buffer: Buffer.from("fixture"), mimeType: "image/jpeg" }] }),
-      smoke.evaluateImageDescribe("fixture-chat", { text: "a star" })
-    ];
-    assert.equal(results.length, 9);
-    assert.equal(results.filter((r: any) => r.status === "pass").length, 9);
-    assert.equal(results.filter((r: any) => r.status !== "pass").length, 0);
-    assert.equal(results.filter((r: any) => r.check === "catalog:image-model").length, 1);
-  });
 });

@@ -244,13 +244,34 @@ describe("integration-smoke: catalog check", () => {
 });
 
 describe("integration-smoke: transient quota distinction", () => {
-  it("fails transient image limits instead of skipping them as exhausted quota", () => {
+  it("skips transient image limits as rate_limited, never exhausted quota", () => {
     const message = "[antigravity] Image generation rate or capacity limit HTTP 429 (model gemini-3.1-flash-image): RESOURCE_EXHAUSTED: MODEL_CAPACITY_EXHAUSTED";
     assert.equal(smoke.classifySmokeResult(Object.assign(new Error(message), {
       status: 429, isTransientRateLimit: true, isTerminalQuota: false
-    })).status, "fail");
-    assert.equal(smoke.classifySmokeResult(new Error(message)).status, "fail");
-    assert.equal(smoke.classifySmokeResult(new Error("RATE_LIMIT_EXCEEDED HTTP 429")).status, "fail");
+    })).status, "skipped");
+    assert.equal(smoke.classifySmokeResult(new Error(message)).status, "skipped");
+    assert.equal(smoke.classifySmokeResult(new Error("RATE_LIMIT_EXCEEDED HTTP 429")).status, "skipped");
     assert.equal(smoke.classifySmokeResult(new Error("Quota exceeded HTTP 429: QUOTA_EXHAUSTED")).status, "skipped");
+  });
+});
+
+
+describe("integration-smoke: global transient skip reporting", () => {
+  for (const check of ["catalog", "turn", "usage", "search", "fetch", "image:generation", "image:describe"]) {
+    it(`gives ${check} a printable rate_limited skip without quota language`, () => {
+      const result = smoke.classifySmokeResult(new Error(`${check}: MODEL_CAPACITY_EXHAUSTED HTTP 429`));
+      assert.equal(result.status, "skipped"); assert.equal(result.reason, "rate_limited");
+      assert.equal(typeof result.resetTime, "string"); assert.ok(result.resetTime.length > 0);
+      assert.doesNotMatch(result.resetTime, /quota/i);
+    });
+  }
+  it("uses typed retry hints and redacts the hint copied into reports", () => {
+    const result = smoke.classifySmokeResult(Object.assign(new Error("capacity unavailable"), {
+      isTransientRateLimit: true, retryAfter: "10s apiKey=fixture-opaque-credential"
+    }));
+    assert.equal(result.reason, "rate_limited"); assert.match(result.resetTime, /10s/);
+    assert.ok(!result.resetTime.includes("fixture-opaque-credential"));
+    assert.equal(smoke.classifySmokeResult(new Error("Subscription rate limit exceeded (429): retry in 2s")).reason, "rate_limited");
+    assert.match(smoke.classifySmokeResult(new Error("RATE_LIMIT_EXCEEDED: retry in 2s")).resetTime, /2s/);
   });
 });

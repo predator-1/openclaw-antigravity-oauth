@@ -5,7 +5,7 @@
  * Integration smoke test executing against real upstream Antigravity endpoints
  * using the built dist/ code paths.
  *
- * Runs sequentially, rate-limit friendly, with pass / skipped (quota) / fail reporting.
+ * Runs sequentially, rate-limit friendly, with pass / skipped (quota or rate limits) / fail reporting.
  *
  * LOCAL / OPT-IN ONLY: this script talks to real Google endpoints with a real
  * subscription login. It is never run in CI.
@@ -83,7 +83,7 @@ export function parseArgs(rawArgs = process.argv.slice(2), env = process.env) {
 }
 
 /**
- * Classify check result into pass, skipped (quota exhausted), or fail
+ * Classify every check into pass, skipped (quota or transient rate/capacity), or fail
  */
 export function classifySmokeResult(err) {
   if (!err) {
@@ -108,9 +108,15 @@ export function classifySmokeResult(err) {
 
   const isTransientRateLimit =
     err?.isTransientRateLimit === true ||
-    (err?.isTerminalQuota !== true && /RATE_LIMIT_EXCEEDED|MODEL_CAPACITY_EXHAUSTED|rate or capacity limit/i.test(rawMsg));
+    (err?.isTerminalQuota !== true && /RATE_LIMIT_EXCEEDED|MODEL_CAPACITY_EXHAUSTED|rate(?: or capacity)? limit|capacity limit/i.test(rawMsg));
   if (isTransientRateLimit) {
-    return { status: "fail", error: sanitizeError(err) };
+    const resetMatch = rawMsg.match(/(?:Resets in|retry in|retry after)\s+([^\n]+)/i);
+    const resetHint = err?.resetAt || (err?.retryAfter ? `retry after ${err.retryAfter}` : resetMatch?.[1]);
+    return {
+      status: "skipped",
+      reason: "rate_limited",
+      resetTime: resetHint ? sanitizeError(String(resetHint)) : "rate/capacity retry pending"
+    };
   }
 
   const isQuota =

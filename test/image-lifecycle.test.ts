@@ -104,3 +104,57 @@ describe("stored image credentials", () => {
     });
   }
 });
+
+function rpc429(reason: string, metadata: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify({ error: {
+    status: "RESOURCE_EXHAUSTED", message: reason,
+    details: [
+      { reason, domain: "cloudcode", metadata },
+      { retryDelay: "0.001s" }
+    ]
+  } }), { status: 429 });
+}
+
+describe("image quota classification", () => {
+  for (const metadata of [
+    { quotaResetTimeStamp: new Date(Date.now() + 3600000).toISOString() },
+    { quotaResetDelay: "1h" }
+  ]) {
+    it(`reports terminal reset from ${Object.keys(metadata)[0]} without retry`, async () => {
+      let calls = 0;
+      const provider = buildAntigravityImageGenerationProvider({
+        fetchFn: async () => { calls++; return rpc429("QUOTA_EXHAUSTED", metadata); }
+      });
+      await assert.rejects(provider.generateImage({ prompt: "draw a star", apiKey: "fixture" }), (error: Error) => {
+        assert.match(error.message, /Quota exceeded HTTP 429 \(model gemini-3.1-flash-image\)/);
+        assert.match(error.message, /Resets in/);
+        return true;
+      });
+      assert.equal(calls, 1);
+    });
+  }
+
+  for (const succeeds of [true, false]) {
+    it(succeeds ? "retries capacity and succeeds" : "bounds capacity retries without quota language", async () => {
+      let calls = 0;
+      const provider = buildAntigravityImageGenerationProvider({
+        fetchFn: async () => {
+          calls++;
+          return succeeds && calls === 2 ? imageResponse() : rpc429("MODEL_CAPACITY_EXHAUSTED");
+        }
+      });
+      const result = provider.generateImage({ prompt: "draw a star", apiKey: "fixture" });
+      if (succeeds) {
+        assert.equal((await result).images.length, 1);
+      } else {
+        await assert.rejects(result, (error: Error & { isTransientRateLimit?: boolean }) => {
+          assert.doesNotMatch(error.message, /Quota exceeded/);
+          assert.match(error.message, /rate or capacity limit/);
+          assert.equal(error.isTransientRateLimit, true);
+          return true;
+        });
+      }
+      assert.equal(calls, succeeds ? 2 : 3);
+    });
+  }
+});

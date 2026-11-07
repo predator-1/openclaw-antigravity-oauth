@@ -242,3 +242,15 @@ describe("integration-smoke: catalog check", () => {
     assert.ok(res.data.removed.every((id: string) => !catalog.LEGACY_MAPPED_MODELS.includes(id)));
   });
 });
+
+describe("integration-smoke: transient quota distinction", () => {
+  it("fails transient image limits instead of skipping them as exhausted quota", () => {
+    const message = "[antigravity] Image generation rate or capacity limit HTTP 429 (model gemini-3.1-flash-image): RESOURCE_EXHAUSTED: MODEL_CAPACITY_EXHAUSTED";
+    assert.equal(smoke.classifySmokeResult(Object.assign(new Error(message), {
+      status: 429, isTransientRateLimit: true, isTerminalQuota: false
+    })).status, "fail");
+    assert.equal(smoke.classifySmokeResult(new Error(message)).status, "fail");
+    assert.equal(smoke.classifySmokeResult(new Error("RATE_LIMIT_EXCEEDED HTTP 429")).status, "fail");
+    assert.equal(smoke.classifySmokeResult(new Error("Quota exceeded HTTP 429: QUOTA_EXHAUSTED")).status, "skipped");
+  });
+});

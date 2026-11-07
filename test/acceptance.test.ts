@@ -3720,7 +3720,8 @@ if (args[0] === "models" && args[1] === "list") {
         status: "RESOURCE_EXHAUSTED",
         details: [
           {
-            "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+            reason: "QUOTA_EXHAUSTED",
+            domain: "cloudcode",
             metadata: {
               quotaResetTimeStamp: quotaTimestamp
             }

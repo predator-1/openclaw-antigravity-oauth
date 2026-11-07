@@ -128,6 +128,13 @@ export function classifySmokeResult(err) {
     };
   }
 
+  const isTransientRateLimit =
+    err?.isTransientRateLimit === true ||
+    (err?.isTerminalQuota !== true && /RATE_LIMIT_EXCEEDED|MODEL_CAPACITY_EXHAUSTED|rate or capacity limit/i.test(rawMsg));
+  if (isTransientRateLimit) {
+    return { status: "fail", error: sanitizeError(err) };
+  }
+
   const isQuota =
     status === 429 ||
     /quota exceeded/i.test(rawMsg) ||

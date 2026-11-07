@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { getValidAccessToken, isAntigravityConfigured, parseFormattedApiKey } from "./auth.js";
 import {
   DEFAULT_ENDPOINTS,
@@ -7,7 +8,7 @@ import {
   PROVIDER_ID,
   buildAntigravityHeaders
 } from "./constants.js";
-import { extractErrorSummary, formatResetTime } from "./turn.js";
+import { classifyGoogleRpc429, extractErrorSummary, formatResetTime } from "./turn.js";
 import { unwrapCandidates } from "./utils.js";
 import type {
   AntigravityEndpoints,
@@ -208,6 +209,8 @@ export async function executeAntigravityImageGeneration(
   };
 
   const maxAttempts = 2;
+  const maxRateLimitRetries = 2;
+  let rateLimitAttempt = 0;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     // 3. Timeout and abort signal
     const timeoutMs = req.timeoutMs ?? DEFAULT_IMAGE_TIMEOUT_MS;
@@ -247,35 +250,31 @@ export async function executeAntigravityImageGeneration(
       if (!response.ok) {
         const errorText = responseText;
         if (response.status === 429) {
-          let resetNotice = "";
-          try {
-            const errorJson = JSON.parse(errorText) as {
-              error?: {
-                details?: Array<{
-                  metadata?: {
-                    quotaResetTimeStamp?: string;
-                    quotaResetDelay?: string;
-                  };
-                }>;
-              };
-            };
-            const details = errorJson.error?.details;
-            if (Array.isArray(details)) {
-              for (const d of details) {
-                const time = d.metadata?.quotaResetTimeStamp;
-                if (time) {
-                  const formatted = formatResetTime(time);
-                  if (formatted) {
-                    resetNotice = ` (Resets ${formatted.relative})`;
-                    break;
-                  }
-                }
-              }
+          const classification = classifyGoogleRpc429(errorText, response.headers);
+          if (classification.type === "transient_rate_limit" && rateLimitAttempt < maxRateLimitRetries) {
+            rateLimitAttempt++;
+            const boundedDelay = Math.min(Math.max(classification.retryDelayMs ?? 1000, 100), 10_000);
+            try {
+              await delay(boundedDelay, undefined, { signal: controller.signal });
+            } catch (error) {
+              if (controller.signal.aborted) throw controller.signal.reason;
+              throw error;
             }
-          } catch {
-            // Ignore json parse error
+            attempt--; // Rate-limit retries do not consume the separate text-only retry.
+            continue;
           }
-          throw new Error(`[antigravity] Quota exceeded HTTP 429 (model ${canonicalId}): ${extractErrorSummary(errorText)}${resetNotice}`);
+          const terminal = classification.type === "terminal_quota";
+          const reset = classification.resetAt ? formatResetTime(classification.resetAt) : undefined;
+          const resetNotice = reset ? ` (Resets ${reset.relative})` : "";
+          const label = terminal ? "Quota exceeded" : classification.type === "transient_rate_limit"
+            ? "Image generation rate or capacity limit" : "Image generation failed with";
+          throw Object.assign(new Error(
+            `[antigravity] ${label} HTTP 429 (model ${canonicalId}): ${classification.errorSummary}${resetNotice}`
+          ), {
+            status: 429,
+            isTransientRateLimit: classification.type === "transient_rate_limit",
+            isTerminalQuota: terminal
+          });
         }
         throw new Error(`[antigravity] Image generation failed with HTTP ${response.status} (model ${canonicalId}): ${extractErrorSummary(errorText)}`);
       }

@@ -142,6 +142,7 @@ Tool names must match `^[a-zA-Z_][a-zA-Z0-9_]{0,63}$`. `ToolNameMapper.toSafeNam
 - 429 (`classifyGoogleRpc429`), only `ErrorInfo` with domain matching `cloudcode|cloudaicompanion`:
   - `QUOTA_EXHAUSTED`: terminal; reset from `quotaResetTimeStamp`, `quotaResetDelay` or `Resets in …`.
   - `RATE_LIMIT_EXCEEDED`, `MODEL_CAPACITY_EXHAUSTED`: transient; delay from `RetryInfo.retryDelay` or `Please retry in Xs`, clamped to 100 ms–10 s, 2 attempts.
+- Reset-delay parser (2026-11-07, [#18](https://github.com/predator-1/openclaw-antigravity-oauth/issues/18)): accepts complete positive `h`/`m`/`s`/`ms` token sequences with fractions; malformed, non-finite or out-of-Date-range values give no reset time. ISO timestamps have millisecond precision. This is a locally tested Go-style-format assumption, not verification of the exact upstream duration format; no new live probe. Timestamp precedence and retry classification are unchanged.
 - Argon with 0 credits: 429 `RESOURCE_EXHAUSTED` on `gemini-4-argon-*`. The 404 `Requested entity was not found` seen earlier comes from the dead `MODEL_PLACEHOLDER_M124` alias, not from quota (see [Model ids](#model-ids-2026-11-02)).
 - Image models other than `gemini-3.1-flash-image` (`imagen-*`, `gemini-3-pro-image`, `gemini-2.5-flash-image`): 404.
 

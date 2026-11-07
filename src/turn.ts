@@ -943,6 +943,23 @@ export interface GoogleRpc429Classification {
   errorSummary: string;
 }
 
+function parseQuotaResetDelayMs(value: unknown): number | undefined {
+  if (typeof value !== "string" || value.length === 0) return undefined;
+  const token = /(\d+(?:\.\d*)?|\.\d+)(ms|h|m|s)/gy;
+  let offset = 0;
+  let totalMs = 0;
+  while (offset < value.length) {
+    token.lastIndex = offset;
+    const match = token.exec(value);
+    if (!match) return undefined;
+    const scale = match[2] === "h" ? 3_600_000 : match[2] === "m" ? 60_000 : match[2] === "s" ? 1_000 : 1;
+    totalMs += Number(match[1]) * scale;
+    if (!Number.isFinite(totalMs)) return undefined;
+    offset = token.lastIndex;
+  }
+  return totalMs > 0 ? totalMs : undefined;
+}
+
 export function classifyGoogleRpc429(
   errorBody: string,
   headers?: { get(name: string): string | null }
@@ -1005,15 +1022,11 @@ export function classifyGoogleRpc429(
         if (item.metadata?.quotaResetTimeStamp) {
           resetAt = String(item.metadata.quotaResetTimeStamp);
         } else if (item.metadata?.quotaResetDelay) {
-          let ms = 0;
-          const delayStr = String(item.metadata.quotaResetDelay);
-          const h = delayStr.match(/(\d+)h/);
-          const m = delayStr.match(/(\d+)m/);
-          const s = delayStr.match(/(\d+)s/);
-          if (h && h[1]) ms += parseInt(h[1], 10) * 3600_000;
-          if (m && m[1]) ms += parseInt(m[1], 10) * 60_000;
-          if (s && s[1]) ms += parseInt(s[1], 10) * 1000;
-          if (ms > 0) resetAt = new Date(Date.now() + ms).toISOString();
+          const delayMs = parseQuotaResetDelayMs(item.metadata.quotaResetDelay);
+          if (delayMs !== undefined) {
+            const resetDate = new Date(Date.now() + delayMs);
+            if (Number.isFinite(resetDate.getTime())) resetAt = resetDate.toISOString();
+          }
         }
       } else if (reason === "RATE_LIMIT_EXCEEDED" || reason === "MODEL_CAPACITY_EXHAUSTED") {
         classificationType = "transient_rate_limit";

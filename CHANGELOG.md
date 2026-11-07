@@ -8,6 +8,14 @@ agy patch = plugin patch ÷ 100). See [docs/install-and-release.md](docs/install
 
 ## [Unreleased]
 
+## [1.5.300] - 2026-11-08
+
+Targets agy 1.5.3.
+
+### Changed
+
+- Adopt agy 1.5.3 client identity and shared fingerprint after [protocol review](docs/protocol.md#agy-153-2026-11-07).
+
 ### Fixed
 
 - Correct quota-reset countdowns for millisecond and fractional delays; ignore malformed reset delays.

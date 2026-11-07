@@ -1,4 +1,6 @@
-import { isAntigravityConfigured, isAntigravityConfiguredAsync, parseFormattedApiKey } from "./auth.js";
+import { sanitizeError } from "./sanitize.js";
+import { setTimeout as delay } from "node:timers/promises";
+import { canUseStoredAccessToken, getValidAccessToken, isAntigravityConfigured, isAntigravityConfiguredAsync, parseFormattedApiKey } from "./auth.js";
 import {
   DEFAULT_ENDPOINTS,
   DEFAULT_IMAGE_MODEL,
@@ -7,7 +9,7 @@ import {
   PROVIDER_ID,
   buildAntigravityHeaders
 } from "./constants.js";
-import { extractErrorSummary, formatResetTime } from "./turn.js";
+import { classifyGoogleRpc429, extractErrorSummary, formatResetTime } from "./turn.js";
 import { unwrapCandidates } from "./utils.js";
 import type {
   AntigravityEndpoints,
@@ -25,6 +27,8 @@ export interface BuildImageProviderOptions {
   fetchFn?: FetchLike | undefined;
   defaultAuthStore?: AuthProfileStore | undefined;
   modelAuth?: ModelAuthRuntime | undefined;
+  /** Internal loader seam for hermetic host-auth tests. */
+  loadHostAuth?: (() => Promise<Pick<typeof import("openclaw/plugin-sdk/provider-auth-runtime"), "resolveApiKeyForProvider">>) | undefined;
 }
 
 export const BLOCKED_FINISH_REASONS: ReadonlySet<string> = Object.freeze(
@@ -82,6 +86,38 @@ export function mapSizeToImageConfig(size?: string): { aspectRatio?: string; ima
   };
 }
 
+class ImageCredentialTimeoutError extends Error {}
+
+async function getStoredImageAccessToken(
+  store: AuthProfileStore,
+  endpoints: AntigravityEndpoints,
+  fetchImpl: FetchLike,
+  req: ImageGenerationRequest
+): Promise<string> {
+  req.signal?.throwIfAborted();
+  const controller = new AbortController();
+  const onAbort = (): void => controller.abort(req.signal?.reason);
+  req.signal?.addEventListener("abort", onAbort, { once: true });
+  const timeoutMs = req.timeoutMs ?? DEFAULT_IMAGE_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(
+    new ImageCredentialTimeoutError(`Image generation timed out after ${timeoutMs}ms`)
+  ), timeoutMs);
+  let rejectOnAbort: () => void = () => {};
+  const aborted = new Promise<never>((_resolve, reject) => {
+    rejectOnAbort = () => reject(controller.signal.reason);
+    controller.signal.addEventListener("abort", rejectOnAbort, { once: true });
+  });
+  try {
+    return await Promise.race([
+      getValidAccessToken(store, endpoints, fetchImpl, controller.signal), aborted
+    ]);
+  } finally {
+    clearTimeout(timer);
+    req.signal?.removeEventListener("abort", onAbort);
+    controller.signal.removeEventListener("abort", rejectOnAbort);
+  }
+}
+
 export async function executeAntigravityImageGeneration(
   req: ImageGenerationRequest,
   options: BuildImageProviderOptions = {}
@@ -106,36 +142,57 @@ export async function executeAntigravityImageGeneration(
   // B. Check explicit authStore
   if (!accessToken) {
     const store = req.authStore ?? options.defaultAuthStore;
-    if (store) {
+    if (store && typeof store.getSecret === "function") {
       const secret = await store.getSecret(PROVIDER_ID);
       if (secret?.accessToken) {
-        accessToken = secret.accessToken;
-        projectId = secret.projectId || DEFAULT_PROJECT_ID;
+        if (canUseStoredAccessToken(secret)) {
+          try {
+            accessToken = await getStoredImageAccessToken(store, endpoints, fetchImpl, req);
+            projectId = secret.projectId || DEFAULT_PROJECT_ID;
+          } catch (error) {
+            if (req.signal?.aborted) throw req.signal.reason;
+            if (error instanceof ImageCredentialTimeoutError) throw error;
+            // Other refresh failures leave host resolution (C) authoritative.
+          }
+        }
+        // Expired host-managed/static credentials must resolve through the host below.
       }
     }
   }
 
-  // C. Try resolving via OpenClaw SDK if available
+  // C. An unavailable SDK is distinct from an available resolver failing.
   if (!accessToken) {
+    let hostAuth: Pick<typeof import("openclaw/plugin-sdk/provider-auth-runtime"), "resolveApiKeyForProvider"> | undefined;
     try {
-      const { resolveApiKeyForProvider } = await import(
-        "openclaw/plugin-sdk/provider-auth-runtime"
-      );
-      const resolvedAuth = await resolveApiKeyForProvider({
-        provider: PROVIDER_ID,
-        cfg: req.cfg,
-        agentDir: req.agentDir,
-        signal: req.signal
-      });
-      if (resolvedAuth?.apiKey) {
-        const parsedKey = parseFormattedApiKey(resolvedAuth.apiKey);
-        if (parsedKey?.token) {
-          accessToken = parsedKey.token;
-          projectId = parsedKey.projectId || DEFAULT_PROJECT_ID;
+      hostAuth = await (options.loadHostAuth?.() ?? import("openclaw/plugin-sdk/provider-auth-runtime"));
+    } catch {
+      // Bare checkouts/older hosts can lack the SDK module; keep the sign-in fallback.
+    }
+    req.signal?.throwIfAborted();
+    if (hostAuth) {
+      try {
+        const resolvedAuth = await hostAuth.resolveApiKeyForProvider({
+          provider: PROVIDER_ID, cfg: req.cfg, agentDir: req.agentDir, signal: req.signal
+        });
+        req.signal?.throwIfAborted();
+        if (resolvedAuth?.apiKey) {
+          const parsedKey = parseFormattedApiKey(resolvedAuth.apiKey);
+          if (parsedKey?.token) {
+            accessToken = parsedKey.token;
+            projectId = parsedKey.projectId || DEFAULT_PROJECT_ID;
+          }
+        }
+      } catch (error) {
+        if (req.signal?.aborted) throw req.signal.reason ?? error;
+        const detail = error as { code?: unknown; provider?: unknown; message?: unknown } | null;
+        const message = typeof detail?.message === "string" ? detail.message : String(error);
+        const missingLogin =
+          ((detail?.code === "missing-provider-auth" || detail?.code === "missing-api-key") && detail?.provider === PROVIDER_ID) ||
+          /^No API key (?:found|resolved) for provider "antigravity"(?:[.\s]|$)/.test(message);
+        if (!missingLogin) {
+          throw new Error(`[antigravity] Image authentication failed: ${sanitizeError(error)}`);
         }
       }
-    } catch {
-      // If SDK resolution is unavailable (e.g. unit tests), fall through
     }
   }
 
@@ -203,6 +260,8 @@ export async function executeAntigravityImageGeneration(
   };
 
   const maxAttempts = 2;
+  const maxRateLimitRetries = 2;
+  let rateLimitAttempt = 0;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     // 3. Timeout and abort signal
     const timeoutMs = req.timeoutMs ?? DEFAULT_IMAGE_TIMEOUT_MS;
@@ -222,176 +281,183 @@ export async function executeAntigravityImageGeneration(
       req.signal.addEventListener("abort", onExternalAbort, { once: true });
     }
 
-    let response: Response;
+    let rejectOnAbort: () => void = () => {};
+    const aborted = new Promise<never>((_resolve, reject) => {
+      rejectOnAbort = () => reject(controller.signal.reason ?? new Error("Image generation aborted"));
+      controller.signal.addEventListener("abort", rejectOnAbort, { once: true });
+    });
     try {
-      response = await fetchImpl(endpoints.chatCompletionsUrl, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(requestBody),
-        signal: controller.signal
-      });
-    } catch (err) {
-      clearTimeout(timer);
-      if (req.signal) {
-        req.signal.removeEventListener("abort", onExternalAbort);
-      }
-      throw err;
-    } finally {
-      clearTimeout(timer);
-      if (req.signal) {
-        req.signal.removeEventListener("abort", onExternalAbort);
-      }
-    }
+      const response = await Promise.race([
+        fetchImpl(endpoints.chatCompletionsUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
+        }),
+        aborted
+      ]);
+      const responseText = await Promise.race([response.text(), aborted]);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      if (response.status === 429) {
-        let resetNotice = "";
-        try {
-          const errorJson = JSON.parse(errorText) as {
-            error?: {
-              details?: Array<{
-                metadata?: {
-                  quotaResetTimeStamp?: string;
-                  quotaResetDelay?: string;
-                };
-              }>;
-            };
-          };
-          const details = errorJson.error?.details;
-          if (Array.isArray(details)) {
-            for (const d of details) {
-              const time = d.metadata?.quotaResetTimeStamp;
-              if (time) {
-                const formatted = formatResetTime(time);
-                if (formatted) {
-                  resetNotice = ` (Resets ${formatted.relative})`;
-                  break;
+      if (!response.ok) {
+        const errorText = responseText;
+        if (response.status === 429) {
+          const classification = classifyGoogleRpc429(errorText, response.headers);
+          if (classification.type === "transient_rate_limit" && rateLimitAttempt < maxRateLimitRetries) {
+            rateLimitAttempt++;
+            const boundedDelay = Math.min(Math.max(classification.retryDelayMs ?? 1000, 100), 10_000);
+            try {
+              await delay(boundedDelay, undefined, { signal: controller.signal });
+            } catch (error) {
+              if (controller.signal.aborted) throw controller.signal.reason;
+              throw error;
+            }
+            attempt--; // Rate-limit retries do not consume the separate text-only retry.
+            continue;
+          }
+          const terminal = classification.type !== "transient_rate_limit";
+          let reset = classification.resetAt ? formatResetTime(classification.resetAt) : undefined;
+          if (!reset) {
+            try {
+              const payload = JSON.parse(errorText);
+              const details = (payload?.error ?? payload)?.details;
+              if (Array.isArray(details)) {
+                for (const detail of details) {
+                  const candidate = formatResetTime(detail?.metadata?.quotaResetTimeStamp);
+                  if (candidate) { reset = candidate; break; }
                 }
+              }
+            } catch { /* Reset metadata is optional; never include the raw payload. */ }
+          }
+          const resetNotice = reset ? ` (Resets ${reset.relative})` : "";
+          const label = terminal ? "Quota exceeded" : "Image generation rate or capacity limit";
+          throw Object.assign(new Error(
+            `[antigravity] ${label} HTTP 429 (model ${canonicalId}): ${classification.errorSummary}${resetNotice}`
+          ), {
+            status: 429,
+            isTransientRateLimit: classification.type === "transient_rate_limit",
+            isTerminalQuota: terminal
+          });
+        }
+        throw new Error(`[antigravity] Image generation failed with HTTP ${response.status} (model ${canonicalId}): ${extractErrorSummary(errorText)}`);
+      }
+
+      const images: GeneratedImageAsset[] = [];
+      let textAccumulated = "";
+      let finishReason: string | undefined;
+      let blockReason: string | undefined;
+      const safetyDetails: Array<{ category: string; probability: string }> = [];
+
+      const recordSafetyRatings = (ratings: unknown) => {
+        if (!Array.isArray(ratings)) return;
+        for (const r of ratings) {
+          const category = typeof r?.category === "string" ? r.category : "UNKNOWN";
+          const probability = typeof r?.probability === "string" ? r.probability.toUpperCase() : "";
+          const blocked = r?.blocked === true;
+          if (blocked || probability === "HIGH") {
+            if (!safetyDetails.some((s) => s.category === category)) {
+              safetyDetails.push({ category, probability: probability || "BLOCKED" });
+            }
+          }
+        }
+      };
+
+      const lines = responseText.split("\n");
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) {
+          continue;
+        }
+        const dataContent = trimmed.slice(5).trim();
+        if (!dataContent || dataContent === "[DONE]") {
+          continue;
+        }
+        try {
+          const parsed = JSON.parse(dataContent) as Record<string, any>;
+          const respObj = parsed.response ?? parsed;
+
+          if (respObj?.promptFeedback) {
+            if (typeof respObj.promptFeedback.blockReason === "string") {
+              blockReason = respObj.promptFeedback.blockReason;
+            }
+            recordSafetyRatings(respObj.promptFeedback.safetyRatings ?? respObj.promptFeedback.safety_ratings);
+          }
+
+          const candidates = unwrapCandidates(parsed);
+          for (const candidate of candidates) {
+            if (candidate.finishReason && typeof candidate.finishReason === "string") {
+              finishReason = candidate.finishReason;
+            }
+            recordSafetyRatings(candidate.safetyRatings ?? candidate.safety_ratings);
+            const parts = candidate.content?.parts ?? [];
+            for (const part of parts) {
+              if (typeof part.text === "string" && part.text) {
+                textAccumulated += part.text;
+              }
+              const inline = part.inlineData ?? part.inline_data;
+              const data = inline?.data;
+              if (data && typeof data === "string") {
+                const mimeType = (inline.mimeType ?? inline.mime_type ?? "image/jpeg").toLowerCase();
+                const extension = mimeType.includes("png") ? "png" : mimeType.includes("webp") ? "webp" : "jpg";
+                images.push({
+                  buffer: Buffer.from(data, "base64"),
+                  mimeType,
+                  fileName: `generated-${images.length + 1}.${extension}`
+                });
               }
             }
           }
         } catch {
-          // Ignore json parse error
-        }
-        throw new Error(`[antigravity] Quota exceeded HTTP 429 (model ${canonicalId}): ${extractErrorSummary(errorText)}${resetNotice}`);
-      }
-      throw new Error(`[antigravity] Image generation failed with HTTP ${response.status} (model ${canonicalId}): ${extractErrorSummary(errorText)}`);
-    }
-
-    const responseText = await response.text();
-    const images: GeneratedImageAsset[] = [];
-    let textAccumulated = "";
-    let finishReason: string | undefined;
-    let blockReason: string | undefined;
-    const safetyDetails: Array<{ category: string; probability: string }> = [];
-
-    const recordSafetyRatings = (ratings: unknown) => {
-      if (!Array.isArray(ratings)) return;
-      for (const r of ratings) {
-        const category = typeof r?.category === "string" ? r.category : "UNKNOWN";
-        const probability = typeof r?.probability === "string" ? r.probability.toUpperCase() : "";
-        const blocked = r?.blocked === true;
-        if (blocked || probability === "HIGH") {
-          if (!safetyDetails.some((s) => s.category === category)) {
-            safetyDetails.push({ category, probability: probability || "BLOCKED" });
-          }
+          // Ignore unparseable SSE line
         }
       }
-    };
 
-    const lines = responseText.split("\n");
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) {
-        continue;
+      if (images.length > 0) {
+        return {
+          images,
+          model: canonicalId
+        };
       }
-      const dataContent = trimmed.slice(5).trim();
-      if (!dataContent || dataContent === "[DONE]") {
-        continue;
-      }
-      try {
-        const parsed = JSON.parse(dataContent) as Record<string, any>;
-        const respObj = parsed.response ?? parsed;
 
-        if (respObj?.promptFeedback) {
-          if (typeof respObj.promptFeedback.blockReason === "string") {
-            blockReason = respObj.promptFeedback.blockReason;
-          }
-          recordSafetyRatings(respObj.promptFeedback.safetyRatings ?? respObj.promptFeedback.safety_ratings);
-        }
-
-        const candidates = unwrapCandidates(parsed);
-        for (const candidate of candidates) {
-          if (candidate.finishReason && typeof candidate.finishReason === "string") {
-            finishReason = candidate.finishReason;
-          }
-          recordSafetyRatings(candidate.safetyRatings ?? candidate.safety_ratings);
-          const parts = candidate.content?.parts ?? [];
-          for (const part of parts) {
-            if (typeof part.text === "string" && part.text) {
-              textAccumulated += part.text;
-            }
-            const inline = part.inlineData ?? part.inline_data;
-            const data = inline?.data;
-            if (data && typeof data === "string") {
-              const mimeType = (inline.mimeType ?? inline.mime_type ?? "image/jpeg").toLowerCase();
-              const extension = mimeType.includes("png") ? "png" : mimeType.includes("webp") ? "webp" : "jpg";
-              images.push({
-                buffer: Buffer.from(data, "base64"),
-                mimeType,
-                fileName: `generated-${images.length + 1}.${extension}`
-              });
-            }
-          }
-        }
-      } catch {
-        // Ignore unparseable SSE line
-      }
-    }
-
-    if (images.length > 0) {
-      return {
-        images,
-        model: canonicalId
-      };
-    }
-
-    // No image part arrived
-    const isBlocked = Boolean(
-      blockReason ||
-      (finishReason && BLOCKED_FINISH_REASONS.has(finishReason.toUpperCase()))
-    );
-
-    const safetyStr =
-      safetyDetails.length > 0
-        ? ` [safety: ${safetyDetails.map((s) => `${s.category}=${s.probability}`).join(", ")}]`
-        : "";
-
-    if (isBlocked) {
-      const reason = blockReason ?? finishReason ?? "SAFETY";
-      const snippet = textAccumulated.trim().slice(0, 300);
-      throw new Error(
-        `Antigravity image generation blocked (${reason})${safetyStr}${snippet ? `: "${snippet}"` : ""}`
+      // No image part arrived
+      const isBlocked = Boolean(
+        blockReason ||
+        (finishReason && BLOCKED_FINISH_REASONS.has(finishReason.toUpperCase()))
       );
-    }
 
-    // Retry exactly once only when no image, no block, and finishReason is STOP or undefined/missing
-    const isStopOrMissing = !finishReason || finishReason.toUpperCase() === "STOP";
-    if (attempt === 0 && isStopOrMissing && !req.signal?.aborted) {
-      continue;
-    }
+      const safetyStr =
+        safetyDetails.length > 0
+          ? ` [safety: ${safetyDetails.map((s) => `${s.category}=${s.probability}`).join(", ")}]`
+          : "";
 
-    const snippet = textAccumulated.trim().slice(0, 300);
-    const details: string[] = [];
-    if (finishReason) details.push(`finishReason: ${finishReason}`);
-    if (blockReason) details.push(`blockReason: ${blockReason}`);
-    if (safetyDetails.length > 0) {
-      details.push(`safety: ${safetyDetails.map((s) => `${s.category}=${s.probability}`).join(", ")}`);
+      if (isBlocked) {
+        const reason = blockReason ?? finishReason ?? "SAFETY";
+        const snippet = textAccumulated.trim().slice(0, 300);
+        throw new Error(
+          `Antigravity image generation blocked (${reason})${safetyStr}${snippet ? `: "${snippet}"` : ""}`
+        );
+      }
+
+      // Retry exactly once only when no image, no block, and finishReason is STOP or undefined/missing
+      const isStopOrMissing = !finishReason || finishReason.toUpperCase() === "STOP";
+      if (attempt === 0 && isStopOrMissing && !req.signal?.aborted) {
+        continue;
+      }
+
+      const snippet = textAccumulated.trim().slice(0, 300);
+      const details: string[] = [];
+      if (finishReason) details.push(`finishReason: ${finishReason}`);
+      if (blockReason) details.push(`blockReason: ${blockReason}`);
+      if (safetyDetails.length > 0) {
+        details.push(`safety: ${safetyDetails.map((s) => `${s.category}=${s.probability}`).join(", ")}`);
+      }
+      if (snippet) details.push(`model text: "${snippet}"`);
+      const detailStr = details.length > 0 ? ` (${details.join(", ")})` : "";
+      throw new Error(`Antigravity image generation response missing image data${detailStr}`);
+    } finally {
+      clearTimeout(timer);
+      controller.signal.removeEventListener("abort", rejectOnAbort);
+      req.signal?.removeEventListener("abort", onExternalAbort);
     }
-    if (snippet) details.push(`model text: "${snippet}"`);
-    const detailStr = details.length > 0 ? ` (${details.join(", ")})` : "";
-    throw new Error(`Antigravity image generation response missing image data${detailStr}`);
   }
 
   throw new Error("Antigravity image generation response missing image data");

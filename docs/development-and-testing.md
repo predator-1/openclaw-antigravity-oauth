@@ -51,7 +51,7 @@ npm run test:integration -- --auth-source=agy [--agy-token-file=<path>] [--min-u
   - web fetch through `antigravity-fetch` against a run-time nonce echo URL;
   - image generation (one retry on 503 `UNAVAILABLE`, deadline, or 500 `INTERNAL`);
   - image description.
-- Results: `pass`; `skipped` for quota exhaustion (429, `RESOURCE_EXHAUSTED`, `Individual quota reached`) with the reset time; `fail` otherwise (exit 1), including model 404 / `unknown model` / `NOT_FOUND`. A 429 with `Resets in` is the real quota signal; treating Argon 404 as quota hid the dead `MODEL_PLACEHOLDER_M124` alias.
+- Results: `pass`; `skipped` for quota exhaustion (429, `RESOURCE_EXHAUSTED`, `Individual quota reached`) with the reset time; transient rate/capacity limits are `skipped: rate_limited` with a retry/reset hint, not exhausted quota; `fail` otherwise (exit 1), including model 404 / `unknown model` / `NOT_FOUND`. A 429 with `Resets in` is the real quota signal; treating Argon 404 as quota hid the dead `MODEL_PLACEHOLDER_M124` alias.
 - Live freshness checks: put a nonce generated at run time into an echo URL (`postman-echo.com/get?n=<nonce>`) and require it in the result; fixed pages can come from training data or caches.
 - Errors go through `sanitizeError` (tokens, JWTs, emails, project ids). `--json` sends plugin logs to stderr.
 - Never run in CI. Never paste raw output that contains account-specific data.

@@ -8,10 +8,15 @@ agy patch = plugin patch ÷ 100). See [docs/install-and-release.md](docs/install
 
 ## [Unreleased]
 
+## [1.5.203] - 2026-11-07
+
+Targets agy 1.5.2. Plugin-only fixes.
+
 ### Added
 
 - Smoke catalog check detects changes to the pinned upstream image model routing list.
 - Troubleshooting guidance for the missing Antigravity video-generation provider.
+- Dated upstream probe: video generation is not available in the tested forms ([docs/protocol.md](docs/protocol.md#video-generation-probed-2026-11-07)).
 
 ### Fixed
 

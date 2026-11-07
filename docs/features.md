@@ -121,7 +121,7 @@ Image SDK auth errors (2026-11-07, published `openclaw@2026.10.10` `provider-aut
 
 ## Not available upstream
 
-Probed on `v1internal` and not implemented: video generation, TTS, embeddings, music. Web fetch through `urlContext` does not work; pages are fetched through `fetchFromTrawlerCache` via `antigravity-fetch` (above).
+Probed on `v1internal` and not implemented: TTS, embeddings, music. Video generation: [dated probe](protocol.md#video-generation-probed-2026-11-07). Web fetch through `urlContext` does not work; pages are fetched through `fetchFromTrawlerCache` via `antigravity-fetch` (above).
 
 Video-generation provider errors: [troubleshooting](troubleshooting.md).
 

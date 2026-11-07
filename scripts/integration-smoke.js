@@ -379,6 +379,55 @@ export function evaluateCatalog(upstreamModels, knownModelIds) {
   };
 }
 
+export function evaluateImageModelCatalog(imageGenerationModelIds) {
+  const result = { check: "catalog:image-model", target: DEFAULT_IMAGE_MODEL };
+  if (imageGenerationModelIds === undefined) {
+    return { ...result, status: "skipped", details: "imageGenerationModelIds absent" };
+  }
+  const ids = Array.isArray(imageGenerationModelIds)
+    ? imageGenerationModelIds.filter((id) => typeof id === "string")
+    : [];
+  return {
+    ...result,
+    status: ids.includes(DEFAULT_IMAGE_MODEL) ? "pass" : "fail",
+    details: `Expected ${DEFAULT_IMAGE_MODEL}; imageGenerationModelIds: [${ids.join(", ")}]`,
+    data: { expected: DEFAULT_IMAGE_MODEL, imageGenerationModelIds: ids }
+  };
+}
+
+// Observe the same discovery response in the smoke only; runtime catalog parsing is unchanged.
+export async function runCatalogChecks(authStore, fetchFn = fetch) {
+  let imageModelCheck = evaluateImageModelCatalog(undefined);
+  const catalog = new CatalogService(DEFAULT_ENDPOINTS, async (input, init) => {
+    const response = await fetchFn(input, init);
+    if (String(input) === DEFAULT_ENDPOINTS.modelsUrl && response.ok) {
+      const payload = await response.clone().json();
+      imageModelCheck = evaluateImageModelCatalog(payload?.imageGenerationModelIds);
+    }
+    return response;
+  });
+  let catalogCheck;
+  try {
+    const upstreamModels = await catalog.listModels(authStore, { refresh: true });
+    catalogCheck = evaluateCatalog(upstreamModels, KNOWN_CATALOG_MODELS);
+  } catch (err) {
+    const classified = classifySmokeResult(err);
+    catalogCheck = {
+      check: "catalog",
+      target: "fetchAvailableModels",
+      status: classified.status,
+      details: classified.status === "skipped" ? `Skipped (${classified.reason}: ${classified.resetTime})` : classified.error
+    };
+    imageModelCheck = {
+      check: "catalog:image-model",
+      target: DEFAULT_IMAGE_MODEL,
+      status: "skipped",
+      details: "Catalog discovery unavailable; imageGenerationModelIds not checked"
+    };
+  }
+  return { catalog, checks: [catalogCheck, imageModelCheck] };
+}
+
 export function evaluatePongTurn(modelId, res) {
   const text = (res?.text || "").trim();
   if (/\bpong\b/i.test(text)) {
@@ -594,23 +643,9 @@ export async function main() {
     console.log(`Auth source: ${profile.source} (token kept in memory only; never printed)`);
   }
 
-  const catalog = new CatalogService(DEFAULT_ENDPOINTS);
-
-  // 2. Catalog check: fetchAvailableModels
-  let catalogResult;
-  try {
-    const upstreamModels = await catalog.listModels(inMemStore, { refresh: true });
-    catalogResult = evaluateCatalog(upstreamModels, KNOWN_CATALOG_MODELS);
-  } catch (err) {
-    const classified = classifySmokeResult(err);
-    catalogResult = {
-      check: "catalog",
-      target: "fetchAvailableModels",
-      status: classified.status,
-      details: classified.status === "skipped" ? `Skipped (${classified.reason}: ${classified.resetTime})` : classified.error
-    };
-  }
-  results.push(catalogResult);
+  // 2. Chat catalog and image routing checks share one fetchAvailableModels response.
+  const { catalog, checks: catalogChecks } = await runCatalogChecks(inMemStore);
+  results.push(...catalogChecks);
   await sleep(500);
 
   // Logins without a stored projectId (e.g. --auth-source=agy) resolve the managed

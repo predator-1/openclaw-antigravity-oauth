@@ -10,6 +10,7 @@ agy patch = plugin patch ÷ 100). See [docs/install-and-release.md](docs/install
 
 ### Added
 
+- Smoke catalog check detects changes to the pinned upstream image model routing list.
 - Troubleshooting guidance for the missing Antigravity video-generation provider.
 
 ### Fixed

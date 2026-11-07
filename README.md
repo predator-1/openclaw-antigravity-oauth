@@ -21,17 +21,23 @@ Details: [docs/features.md](docs/features.md).
 ## Install
 
 ```bash
-openclaw plugins install git:github.com/predator-1/openclaw-antigravity-oauth@release
+openclaw plugins install git:github.com/predator-1/openclaw-antigravity-oauth@release --force --accept-capabilities
 openclaw models auth login --provider antigravity --method oauth
 ```
 
-Pin a version with `@v<version>` instead of `@release` (for example `@v1.5.201`). A first install asks for capability consent; in a non-interactive shell add `--accept-capabilities` after reviewing what the plugin declares.
+Pin a version with `@v<version>` instead of `@release` (for example `@v1.5.201`).
+
+`--force` confirms a source outside ClawHub and `--accept-capabilities` approves what the plugin [declares](openclaw.plugin.json). Leave them out in a terminal to answer the prompts instead; a non-interactive shell needs both.
 
 ## Update
 
 ```bash
+openclaw gateway stop
 openclaw plugins update openclaw-antigravity-oauth
+openclaw gateway start
 ```
+
+Without stopping the Gateway: `openclaw plugins install git:github.com/predator-1/openclaw-antigravity-oauth@release --force --no-enable`, then `openclaw plugins reload openclaw-antigravity-oauth`.
 
 ## Documentation
 

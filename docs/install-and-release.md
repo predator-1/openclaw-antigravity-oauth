@@ -17,7 +17,7 @@ openclaw plugins inspect openclaw-antigravity-oauth --runtime
 openclaw models auth login --provider antigravity --method oauth
 ```
 
-Finding 2026-11-07 (OpenClaw 2026.10.10, clean state, no GitHub credentials, non-interactive shell): a first `plugins install` stops with `requires capability consent` and installs nothing until it is re-run with `--accept-capabilities`.
+Finding 2026-11-07 (OpenClaw 2026.10.10, clean state, no GitHub credentials): a first install passes two host gates, and the plugin cannot skip either. The source gate (`--force`) applies outside ClawHub; in a terminal it is a `[y/N]` prompt, in a non-interactive shell the install stops with `Install cancelled; rerun with --force`. The capability gate (`--accept-capabilities`) then stops a non-interactive install with `requires capability consent`. Host docs exempt only bundled and verified official catalog plugins from capability consent. `--force --accept-capabilities` installed in a non-interactive shell.
 
 Optional tarball install (offline or air-gapped hosts):
 
@@ -35,7 +35,7 @@ openclaw plugins install npm-pack:./openclaw-antigravity-oauth-1.5.201.tgz --for
 openclaw plugins update openclaw-antigravity-oauth
 ```
 
-An `@release` install moves to the newest release. A pinned `@v<version>` install stays on that tag; reinstall with the new tag to move. The OpenClaw docs ask for a stopped Gateway during `plugins update`; a Gateway restart may be needed before the new version loads. Stored OAuth credentials live in OpenClaw's auth store, so no re-login is needed.
+An `@release` install moves to the newest release. A pinned `@v<version>` install stays on that tag; reinstall with the new tag to move. Finding 2026-11-07 (OpenClaw 2026.10.10): with the Gateway running, `plugins update` refuses with `requires exclusive offline state ownership` and changes nothing, so stop the Gateway first. `plugins install <spec> --force --no-enable` followed by `plugins reload <id>` updated a running Gateway without a restart and kept the earlier capability acceptance. Stored OAuth credentials live in OpenClaw's auth store, so no re-login is needed.
 
 ## Migration
 

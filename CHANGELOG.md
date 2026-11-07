@@ -8,6 +8,10 @@ agy patch = plugin patch ÷ 100). See [docs/install-and-release.md](docs/install
 
 ## [Unreleased]
 
+### Changed
+
+- The README install command works in a terminal and in a non-interactive shell (`--force --accept-capabilities`); the docs correct the earlier note and cover updating with the Gateway running or stopped.
+
 ### Fixed
 
 - Reject unsupported image-generation model ids before upstream requests and include the model in HTTP errors.

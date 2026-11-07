@@ -185,6 +185,49 @@ export function isAntigravityConfigured(
   return false;
 }
 
+/** Prefer worker-backed host checks; sync methods are only for older hosts. */
+export async function isAntigravityConfiguredAsync(
+  ctx?: { cfg?: unknown; agentDir?: string } | undefined,
+  authStore?: AuthProfileStore | undefined,
+  modelAuth?: ModelAuthRuntime | undefined
+): Promise<boolean> {
+  try {
+    if (authStore?.hasSecret?.(PROVIDER_ID)) {
+      return true;
+    }
+    if (!modelAuth) {
+      return false;
+    }
+
+    const ensureStore = modelAuth.ensureAuthProfileStoreAsync ?? modelAuth.ensureAuthProfileStore;
+    const store = ensureStore
+      ? await ensureStore.call(modelAuth, ctx?.agentDir, { readOnly: true, allowKeychainPrompt: false })
+      : undefined;
+    if (store !== undefined && typeof modelAuth.listProfilesForProvider === "function") {
+      const profiles = modelAuth.listProfilesForProvider(store, PROVIDER_ID);
+      if (Array.isArray(profiles) && profiles.length > 0) {
+        return true;
+      }
+    }
+
+    const params = {
+      provider: PROVIDER_ID,
+      cfg: ctx?.cfg,
+      agentDir: ctx?.agentDir,
+      ...(store !== undefined ? { store } : {}),
+      readOnly: true,
+      allowKeychainPrompt: false
+    };
+    if (typeof modelAuth.isProviderApiKeyConfiguredAsync === "function") {
+      return Boolean(await modelAuth.isProviderApiKeyConfiguredAsync(params));
+    }
+    return Boolean(modelAuth.isProviderApiKeyConfigured?.(params));
+  } catch {
+    // Fail closed; a failed async check must not retry through deprecated APIs.
+    return false;
+  }
+}
+
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     if (signal?.aborted) {

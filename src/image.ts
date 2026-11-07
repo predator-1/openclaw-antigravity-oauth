@@ -1,6 +1,6 @@
 import { sanitizeError } from "./sanitize.js";
 import { setTimeout as delay } from "node:timers/promises";
-import { canUseStoredAccessToken, getValidAccessToken, isAntigravityConfigured, parseFormattedApiKey } from "./auth.js";
+import { canUseStoredAccessToken, getValidAccessToken, isAntigravityConfigured, isAntigravityConfiguredAsync, parseFormattedApiKey } from "./auth.js";
 import {
   DEFAULT_ENDPOINTS,
   DEFAULT_IMAGE_MODEL,
@@ -519,6 +519,8 @@ export function buildAntigravityImageGenerationProvider(
     },
     isConfigured: (ctx?: { cfg?: unknown; agentDir?: string }) =>
       isAntigravityConfigured(ctx, options.defaultAuthStore, options.modelAuth),
+    isConfiguredAsync: (ctx?: { cfg?: unknown; agentDir?: string }) =>
+      isAntigravityConfiguredAsync(ctx, options.defaultAuthStore, options.modelAuth),
     generateImage: async (req: ImageGenerationRequest) =>
       await executeAntigravityImageGeneration(req, options)
   };

@@ -8,6 +8,10 @@ agy patch = plugin patch ÷ 100). See [docs/install-and-release.md](docs/install
 
 ## [Unreleased]
 
+## [1.5.202] - 2026-11-07
+
+Targets agy 1.5.2. Plugin-only fix.
+
 ### Changed
 
 - The README install command works in a terminal and in a non-interactive shell (`--force --accept-capabilities`); the docs correct the earlier note and cover updating with the Gateway running or stopped.

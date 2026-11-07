@@ -158,3 +158,94 @@ describe("image quota classification", () => {
     });
   }
 });
+
+describe("image host auth failures", () => {
+  it("rethrows the caller's abort reason from the resolver", async () => {
+    const caller = new AbortController();
+    const reason = new Error("caller cancelled host auth");
+    const provider = buildAntigravityImageGenerationProvider({
+      loadHostAuth: async () => ({ resolveApiKeyForProvider: async (params) => {
+        assert.equal(params.signal, caller.signal);
+        caller.abort(reason);
+        throw new Error("Resolver aborted");
+      } })
+    });
+    await assert.rejects(provider.generateImage({ prompt: "draw a star", signal: caller.signal }), (error) => error === reason);
+  });
+
+  for (const missing of [
+    Object.assign(new Error("Missing login"), { code: "missing-provider-auth", provider: "antigravity" }),
+    Object.assign(new Error("Missing key"), { code: "missing-api-key", provider: "antigravity" }),
+    new Error('No API key found for provider "antigravity".')
+  ]) {
+    it(`keeps sign-in guidance for ${missing.message}`, async () => {
+      const provider = buildAntigravityImageGenerationProvider({
+        loadHostAuth: async () => ({ resolveApiKeyForProvider: async () => { throw missing; } })
+      });
+      await assert.rejects(provider.generateImage({ prompt: "draw a star" }), /requires active authentication/);
+    });
+  }
+
+  for (const label of ["network unavailable", "refresh failed"]) {
+    it(`surfaces ${label} with sensitive values redacted`, async () => {
+      const sensitive = "fixture-sensitive-value";
+      const provider = buildAntigravityImageGenerationProvider({
+        loadHostAuth: async () => ({ resolveApiKeyForProvider: async () => {
+          throw new Error(`${label}: Bearer ${sensitive}`, { cause: new Error(`refresh_token=${sensitive}`) });
+        } })
+      });
+      await assert.rejects(provider.generateImage({ prompt: "draw a star" }), (error: Error) => {
+        assert.ok(error.message.includes(label));
+        assert.ok(error.message.includes("[REDACTED]"));
+        assert.ok(!error.message.includes(sensitive));
+        assert.doesNotMatch(error.message, /Please sign in/);
+        return true;
+      });
+    });
+  }
+
+  it("redacts common bare and named auth-secret shapes", async () => {
+    const values = [
+      "ya29." + "fixture-access", "1//" + "fixture-refresh",
+      "GOCSPX-" + "fixture-secret", "eyJ" + "fixtureheader.payload.signature"
+    ];
+    const named = "fixture-named-value";
+    const provider = buildAntigravityImageGenerationProvider({
+      loadHostAuth: async () => ({ resolveApiKeyForProvider: async () => {
+        throw new Error(`refresh error: ${values.join(" ")} token=${named} apiKey=${named}`);
+      } })
+    });
+    await assert.rejects(provider.generateImage({ prompt: "draw a star" }), (error: Error) => {
+      for (const value of [...values, named]) assert.ok(!error.message.includes(value));
+      assert.match(error.message, /refresh error/);
+      return true;
+    });
+  });
+
+  it("keeps sign-in fallback for an unavailable SDK", async () => {
+    const provider = buildAntigravityImageGenerationProvider({
+      loadHostAuth: async () => { throw new Error("SDK module unavailable"); }
+    });
+    await assert.rejects(provider.generateImage({ prompt: "draw a star" }), /requires active authentication/);
+  });
+
+  it("resolves expired static credentials through the host instead of sending them", async () => {
+    const store = new InMemoryAuthProfileStore();
+    await store.setSecret("antigravity", {
+      accessToken: "expired-fixture", refreshToken: "", expiresAt: Date.now() - 3600000
+    });
+    let resolved = 0;
+    const provider = buildAntigravityImageGenerationProvider({
+      defaultAuthStore: store,
+      loadHostAuth: async () => ({ resolveApiKeyForProvider: async () => {
+        resolved++; return { apiKey: "host-fixture" };
+      } }),
+      fetchFn: async (_url, init) => {
+        assert.equal((init?.headers as Record<string, string>).Authorization, "Bearer host-fixture");
+        return imageResponse();
+      }
+    });
+    assert.equal((await provider.generateImage({ prompt: "draw a star" })).images.length, 1);
+    assert.equal(resolved, 1);
+  });
+});

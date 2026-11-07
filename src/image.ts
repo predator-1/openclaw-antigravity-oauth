@@ -26,6 +26,8 @@ export interface BuildImageProviderOptions {
   fetchFn?: FetchLike | undefined;
   defaultAuthStore?: AuthProfileStore | undefined;
   modelAuth?: ModelAuthRuntime | undefined;
+  /** Internal loader seam for hermetic host-auth tests. */
+  loadHostAuth?: (() => Promise<Pick<typeof import("openclaw/plugin-sdk/provider-auth-runtime"), "resolveApiKeyForProvider">>) | undefined;
 }
 
 export const BLOCKED_FINISH_REASONS: ReadonlySet<string> = Object.freeze(
@@ -83,6 +85,24 @@ export function mapSizeToImageConfig(size?: string): { aspectRatio?: string; ima
   };
 }
 
+function redactImageAuthError(error: unknown): string {
+  const messages: string[] = [];
+  const seen = new Set<unknown>();
+  for (let current = error; current && messages.length < 3 && !seen.has(current);) {
+    seen.add(current);
+    const item = current as { message?: unknown; cause?: unknown };
+    messages.push(typeof item.message === "string" ? item.message : String(current));
+    current = item.cause;
+  }
+  return messages.join(": ")
+    .replace(/Bearer\s+[a-zA-Z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+    .replace(/\bya29\.[a-zA-Z0-9._-]+/g, "[REDACTED]")
+    .replace(/(^|[^a-zA-Z0-9])1\/\/[a-zA-Z0-9._-]{8,}/g, "$1[REDACTED]")
+    .replace(/\bGOCSPX-[a-zA-Z0-9_-]+/g, "[REDACTED]")
+    .replace(/\beyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]*/g, "[REDACTED]")
+    .replace(/("?(?:access_?token|refresh_?token|id_?token|client_?secret|api_?key|token)"?\s*[:=]\s*"?)[^"&\s,}]+/gi, "$1[REDACTED]");
+}
+
 export async function executeAntigravityImageGeneration(
   req: ImageGenerationRequest,
   options: BuildImageProviderOptions = {}
@@ -121,27 +141,39 @@ export async function executeAntigravityImageGeneration(
     }
   }
 
-  // C. Try resolving via OpenClaw SDK if available
+  // C. An unavailable SDK is distinct from an available resolver failing.
   if (!accessToken) {
+    let hostAuth: Pick<typeof import("openclaw/plugin-sdk/provider-auth-runtime"), "resolveApiKeyForProvider"> | undefined;
     try {
-      const { resolveApiKeyForProvider } = await import(
-        "openclaw/plugin-sdk/provider-auth-runtime"
-      );
-      const resolvedAuth = await resolveApiKeyForProvider({
-        provider: PROVIDER_ID,
-        cfg: req.cfg,
-        agentDir: req.agentDir,
-        signal: req.signal
-      });
-      if (resolvedAuth?.apiKey) {
-        const parsedKey = parseFormattedApiKey(resolvedAuth.apiKey);
-        if (parsedKey?.token) {
-          accessToken = parsedKey.token;
-          projectId = parsedKey.projectId || DEFAULT_PROJECT_ID;
+      hostAuth = await (options.loadHostAuth?.() ?? import("openclaw/plugin-sdk/provider-auth-runtime"));
+    } catch {
+      // Bare checkouts/older hosts can lack the SDK module; keep the sign-in fallback.
+    }
+    req.signal?.throwIfAborted();
+    if (hostAuth) {
+      try {
+        const resolvedAuth = await hostAuth.resolveApiKeyForProvider({
+          provider: PROVIDER_ID, cfg: req.cfg, agentDir: req.agentDir, signal: req.signal
+        });
+        req.signal?.throwIfAborted();
+        if (resolvedAuth?.apiKey) {
+          const parsedKey = parseFormattedApiKey(resolvedAuth.apiKey);
+          if (parsedKey?.token) {
+            accessToken = parsedKey.token;
+            projectId = parsedKey.projectId || DEFAULT_PROJECT_ID;
+          }
+        }
+      } catch (error) {
+        if (req.signal?.aborted) throw req.signal.reason ?? error;
+        const detail = error as { code?: unknown; provider?: unknown; message?: unknown } | null;
+        const message = typeof detail?.message === "string" ? detail.message : String(error);
+        const missingLogin =
+          ((detail?.code === "missing-provider-auth" || detail?.code === "missing-api-key") && detail?.provider === PROVIDER_ID) ||
+          /^No API key (?:found|resolved) for provider "antigravity"(?:[.\s]|$)/.test(message);
+        if (!missingLogin) {
+          throw new Error(`[antigravity] Image authentication failed: ${redactImageAuthError(error)}`);
         }
       }
-    } catch {
-      // If SDK resolution is unavailable (e.g. unit tests), fall through
     }
   }
 

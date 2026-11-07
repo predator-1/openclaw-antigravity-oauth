@@ -90,6 +90,8 @@ The plugin previously ignored `options.responseFormat`. It now maps it on Gemini
 
 Image stored-auth scope (2026-11-07, `src/index.ts` registration/auth method and published `openclaw@2026.10.10` `runtime-jO-vrhdY.mjs`): a fresh registration creates an empty in-memory default store; ordinary generation forwards the caller's auth store, not a hydrated plugin store. Only the same registration's OAuth method (or an explicitly supplied plugin store) populates the default; chat uses a separate turn store. Thus the stored-token path is conditional, not evidence that the reported installed inference used it. Keep the fix local: use the existing refresh helper when refreshable, and let expired non-refreshable credentials fall through to SDK resolution. No 401 failover is added. Installed SDK unavailable; this is published-source evidence, not a live trace.
 
+Image SDK auth errors (2026-11-07, published `openclaw@2026.10.10` `provider-auth-runtime-ED8xwtLJ.mjs`, `model-auth-provider-kAO_U1WC.mjs`, `model-auth-provider-config-Dlst5H1_.mjs`): the resolver checks caller cancellation and missing login throws `ProviderAuthError` with `code: "missing-provider-auth"`, `provider: "antigravity"` (key-required paths can use `missing-api-key`). Preserve sign-in guidance for these and the older provider-specific missing-key message. An unavailable import still falls through; other resolver errors retain their redacted message/cause, and cancellation preserves the caller's reason. No installed runtime execution was used to infer these contracts.
+
 ## Media understanding
 
 - `api.registerMediaUnderstandingProvider`; capabilities image, audio, video; native document input `pdf`; default model `gemini-3.8-flash`.

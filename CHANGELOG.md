@@ -10,6 +10,7 @@ agy patch = plugin patch ÷ 100). See [docs/install-and-release.md](docs/install
 
 ### Fixed
 
+- Preserve image host-auth cancellation and redacted resolver failures instead of reporting every fault as missing login.
 - Distinguish terminal image quota from transient rate/capacity limits, retain reset hints, and bound transient retries.
 - Refresh expired stored image credentials when possible; otherwise resolve authentication through the host instead of sending an expired credential.
 - Keep image-generation timeout and caller cancellation active through success and error response bodies.

@@ -588,6 +588,7 @@ export function toOpenClawCatalogModelDefinition(
     input.push("image");
   }
 
+  // Used by both OAuth configPatch and catalog.run: ModelProviderConfig, not authored catalog metadata.
   return {
     id: row.id,
     name: row.displayName,
@@ -607,8 +608,7 @@ export function toOpenClawCatalogModelDefinition(
     compat: {
       supportsReasoningEffort: true,
       supportedReasoningEfforts: row.reasoningLevels
-    },
-    ...(row.id === "gemini-3.5-flash-lite" ? { tags: ["cheap"] } : {})
+    }
   };
 }
 

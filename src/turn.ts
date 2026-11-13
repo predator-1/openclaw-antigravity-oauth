@@ -1215,19 +1215,25 @@ export async function executeTurn(
     throw new Error(`unknown model: ${bareModelId}`);
   }
 
-  const resolvedModel = catalog.resolveModelForTurn(bareModelId, request.reasoningEffort);
+  let resolvedModel = catalog.resolveModelForTurn(bareModelId, request.reasoningEffort);
   if (!resolvedModel) {
     throw new Error(`unknown model: ${bareModelId}`);
   }
-  const { matchedModel, upstreamModelId, effectiveEffort } = resolvedModel;
 
   // 3. Validate reasoning effort if specified by host (Contract §4.2)
-  if (request.reasoningEffort !== undefined) {
-    if (request.reasoningEffort === "off" && !matchedModel.canDisableReasoning) {
-      throw new Error(
-        unsupportedReasoningEffortMessage("off", bareModelId, matchedModel.reasoningLevels)
-      );
+  // `off` on a model that cannot disable reasoning means "no effort" for the whole turn:
+  // no thinkingConfig, no reasoning_effort, upstream default applies (features.md#reasoning-effort).
+  if (request.reasoningEffort === "off" && !resolvedModel.matchedModel.canDisableReasoning) {
+    const { reasoningEffort: _droppedOff, ...requestWithoutEffort } = request;
+    request = requestWithoutEffort;
+    resolvedModel = catalog.resolveModelForTurn(bareModelId, undefined);
+    if (!resolvedModel) {
+      throw new Error(`unknown model: ${bareModelId}`);
     }
+  }
+  const { matchedModel, upstreamModelId, effectiveEffort } = resolvedModel;
+
+  if (request.reasoningEffort !== undefined) {
     if (!matchedModel.reasoningLevels.includes(request.reasoningEffort)) {
       throw new Error(
         unsupportedReasoningEffortMessage(

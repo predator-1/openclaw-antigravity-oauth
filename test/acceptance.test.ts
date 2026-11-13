@@ -824,16 +824,17 @@ describe("@openclaw/antigravity-provider acceptance suite (docs/architecture.md,
     );
     assert.equal(networkCalls, 0, "Unknown model must not trigger a network call");
 
-    // Unsupported reasoning effort 'off' when canDisableReasoning is false
+    // Unsupported reasoning effort (not in the model's levels) fails before any call.
+    // `off` on a model that cannot disable reasoning is not rejected (issue #34 tests below).
     await assert.rejects(
       async () => {
         await provider.completeTurn({
           model: "antigravity/gemini-3-pro",
-          reasoningEffort: "off",
+          reasoningEffort: "max",
           messages: [{ role: "user", content: "Hi" }]
         });
       },
-      /unsupported reasoning effort "off"/
+      /unsupported reasoning effort "max" for model gemini-3-pro \(valid: low, medium, high\)/
     );
     assert.equal(networkCalls, 0, "Unsupported reasoning effort must not trigger a network call");
 
@@ -7366,5 +7367,238 @@ describe("show model reasoning", () => {
     assert.ok(thinkingEnd, "thinking_end must be emitted on error mid-thought");
     assert.equal(thinkingEnd?.content, "partial thought");
     assert.ok(events.some((e) => e.type === "error"));
+  });
+});
+
+describe("thinking off on models that cannot disable reasoning (issue #34)", () => {
+  type CapturedBody = {
+    model?: string;
+    project?: string;
+    reasoning_effort?: unknown;
+    request?: { generationConfig?: { thinkingConfig?: Record<string, unknown> } };
+    [key: string]: unknown;
+  };
+
+  const OFF_TEST_MODELS = {
+    "gemini-3.8-flash-tiered": {
+      model: "MODEL_PLACEHOLDER_M322",
+      displayName: "Gemini 3.8 Flash",
+      modality: "chat",
+      maxTokens: 65536
+    },
+    "gemini-4-argon-medium": {
+      model: "MODEL_PLACEHOLDER_M318",
+      displayName: "Gemini 4 Argon (Medium)",
+      modality: "chat",
+      maxTokens: 65536
+    },
+    "claude-opus-5-5-high": {
+      id: "claude-opus-5-5-high",
+      displayName: "Claude Opus 5.5",
+      modality: "chat",
+      maxOutputTokens: 128000
+    },
+    "claude-sonnet-5-5-high": {
+      id: "claude-sonnet-5-5-high",
+      displayName: "Claude Sonnet 5.5",
+      modality: "chat",
+      maxOutputTokens: 128000
+    },
+    "gemini-3-flash": {
+      id: "gemini-3-flash",
+      displayName: "Gemini 3 Flash",
+      modality: "chat",
+      maxOutputTokens: 32768
+    }
+  };
+
+  async function offHarness(options: { projectId?: string } = { projectId: "default-cli-project" }) {
+    const authStore = new InMemoryAuthProfileStore();
+    await authStore.setSecret("antigravity", {
+      accessToken: "ya29.thinking_off_token",
+      refreshToken: "1//thinking_off_refresh",
+      expiresAt: Date.now() + 3600_000,
+      ...(options.projectId ? { projectId: options.projectId } : {})
+    });
+    const bodies: CapturedBody[] = [];
+    const mockFetch: FetchLike = async (input, init) => {
+      const url = String(input);
+      if (url === DEFAULT_ENDPOINTS.modelsUrl) {
+        return jsonResponse({ models: OFF_TEST_MODELS });
+      }
+      if (url === DEFAULT_ENDPOINTS.chatCompletionsUrl) {
+        const body = JSON.parse(String(init?.body)) as CapturedBody;
+        bodies.push(body);
+        if (body.request !== undefined) {
+          return sseResponse([
+            { response: { candidates: [{ content: { role: "model", parts: [{ text: "ok" }] } }] } }
+          ]);
+        }
+        return sseResponse([{ choices: [{ delta: { content: "ok" } }] }]);
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    };
+    const { provider } = createAntigravityProvider({ fetchImpl: mockFetch, authStore });
+    await provider.catalog.listModels({ refresh: true });
+    return { provider, bodies };
+  }
+
+  function withoutRequestId(body: CapturedBody | undefined): CapturedBody | undefined {
+    if (!body) return body;
+    const { requestId: _requestId, ...rest } = body;
+    return rest;
+  }
+
+  it("off on gemini-3.8-flash sends no generationConfig.thinkingConfig and the turn succeeds", async () => {
+    const { provider, bodies } = await offHarness();
+    const models = await provider.catalog.listModels();
+    const flash = models.find((m) => m.id === "gemini-3.8-flash")!;
+    assert.equal(flash.canDisableReasoning, false, "fixture: tiered flash cannot disable reasoning");
+
+    const turn = await provider.completeTurn({
+      model: "antigravity/gemini-3.8-flash",
+      reasoningEffort: "off",
+      messages: [{ role: "user", content: "ping" }]
+    });
+    assert.equal(turn.text, "ok");
+    assert.equal(bodies.length, 1, "exactly one request");
+    const body = bodies[0]!;
+    assert.equal(body.model, "gemini-3.8-flash-tiered");
+    assert.equal(body.request?.generationConfig?.thinkingConfig, undefined);
+    assert.equal(body.request?.generationConfig, undefined);
+    assert.equal("reasoning_effort" in body, false);
+  });
+
+  it("off on a Claude model sends no reasoning_effort (non-v1internal body) and no thinkingConfig (v1internal)", async () => {
+    // Without a project id the plugin builds the OpenAI-style body that carries reasoning_effort.
+    const plain = await offHarness({});
+    await plain.provider.completeTurn({
+      model: "antigravity/claude-sonnet-5-5",
+      reasoningEffort: "high",
+      messages: [{ role: "user", content: "ping" }]
+    });
+    assert.equal(plain.bodies[0]?.reasoning_effort, "high", "control: a supported level is still sent");
+
+    const turn = await plain.provider.completeTurn({
+      model: "antigravity/claude-sonnet-5-5",
+      reasoningEffort: "off",
+      messages: [{ role: "user", content: "ping" }]
+    });
+    assert.equal(turn.text, "ok");
+    const offBody = plain.bodies[1]!;
+    assert.equal("reasoning_effort" in offBody, false);
+    assert.equal(offBody.model, "claude-sonnet-5-5-high");
+
+    const v1 = await offHarness();
+    await v1.provider.completeTurn({
+      model: "antigravity/claude-opus-5-5",
+      reasoningEffort: "off",
+      messages: [{ role: "user", content: "ping" }]
+    });
+    assert.equal(v1.bodies[0]?.model, "claude-opus-5-5-high");
+    assert.equal(v1.bodies[0]?.request?.generationConfig, undefined);
+  });
+
+  it("off on a model with canDisableReasoning: true still sends thinkingBudget: 0", async () => {
+    const { provider, bodies } = await offHarness();
+    const models = await provider.catalog.listModels();
+    const flash3 = models.find((m) => m.id === "gemini-3-flash")!;
+    assert.equal(flash3.canDisableReasoning, true, "fixture: gemini-3-flash can disable reasoning");
+
+    await provider.completeTurn({
+      model: "antigravity/gemini-3-flash",
+      reasoningEffort: "off",
+      messages: [{ role: "user", content: "ping" }]
+    });
+    assert.equal(bodies[0]?.model, "gemini-3-flash");
+    assert.deepEqual(bodies[0]?.request?.generationConfig?.thinkingConfig, {
+      includeThoughts: false,
+      thinkingBudget: 0
+    });
+  });
+
+  it("off on alias and pre-tiered ids behaves like no effort and never throws", async () => {
+    const { provider, bodies } = await offHarness();
+    const ids = [
+      "MODEL_PLACEHOLDER_M322",
+      "gemini-3.8-flash-tiered",
+      "MODEL_PLACEHOLDER_M318",
+      "gemini-4-argon",
+      "gemini-4-argon-low",
+      "gemini-4-argon-high",
+      "claude-opus-5-5",
+      "claude-opus-5-5-high",
+      "claude-sonnet-5-5-medium"
+    ];
+    for (const id of ids) {
+      await provider.completeTurn({
+        model: `antigravity/${id}`,
+        messages: [{ role: "user", content: "ping" }]
+      });
+      const noEffort = withoutRequestId(bodies.at(-1));
+      await provider.completeTurn({
+        model: `antigravity/${id}`,
+        reasoningEffort: "off",
+        messages: [{ role: "user", content: "ping" }]
+      });
+      const off = withoutRequestId(bodies.at(-1));
+      assert.deepEqual(off, noEffort, `off on ${id} must send the same body as no effort`);
+      assert.equal(off?.request?.generationConfig?.thinkingConfig, undefined, `${id}: no thinkingConfig`);
+    }
+  });
+
+  it("max on Argon or Claude still fails the turn", async () => {
+    const { provider, bodies } = await offHarness();
+    for (const model of ["gemini-4-argon", "claude-sonnet-5-5"]) {
+      await assert.rejects(
+        provider.completeTurn({
+          model: `antigravity/${model}`,
+          reasoningEffort: "max",
+          messages: [{ role: "user", content: "ping" }]
+        }),
+        new RegExp(`unsupported reasoning effort "max" for model ${model} \\(valid: low, medium, high\\)`)
+      );
+    }
+    assert.equal(bodies.length, 0, "rejected effort must not call the chat endpoint");
+  });
+
+  it("classifyFailoverReason returns format for an unsupported reasoning effort", () => {
+    const { provider } = createAntigravityProvider({ authStore: new InMemoryAuthProfileStore() });
+    const classify = provider.classifyFailoverReason!;
+    assert.equal(
+      classify({
+        errorMessage:
+          'unsupported reasoning effort "max" for model gemini-4-argon (valid: low, medium, high)'
+      }),
+      "format"
+    );
+    assert.equal(
+      classify({ errorMessage: 'Unsupported Reasoning Effort "xhigh" for model claude-sonnet-5-5' }),
+      "format"
+    );
+  });
+
+  it("createStreamFn with the setup-inference probe options { reasoning: \"off\" } on gemini-3.8-flash streams a reply", async () => {
+    const { provider, bodies } = await offHarness();
+    const streamFn = provider.createStreamFn({ model: { id: "gemini-3.8-flash" } });
+    const stream = streamFn(
+      { id: "gemini-3.8-flash", api: "openai-completions", provider: "antigravity" },
+      { messages: [{ role: "user", content: "probe" }] },
+      {
+        reasoning: "off",
+        maxTokens: 256,
+        apiKey: JSON.stringify({ token: "ya29.thinking_off_token", projectId: "default-cli-project" })
+      }
+    ) as AsyncIterable<Record<string, unknown>>;
+    const events: Array<Record<string, unknown>> = [];
+    for await (const ev of stream) {
+      events.push(ev);
+    }
+    const errorEvent = events.find((e) => e.type === "error");
+    assert.equal(errorEvent, undefined, `probe must not fail: ${JSON.stringify(errorEvent?.error)}`);
+    assert.ok(events.some((e) => e.type === "text_delta" && e.delta === "ok"));
+    assert.equal(bodies.length, 1);
+    assert.equal(bodies[0]?.model, "gemini-3.8-flash-tiered");
+    assert.equal(bodies[0]?.request?.generationConfig, undefined);
   });
 });

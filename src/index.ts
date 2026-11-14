@@ -780,6 +780,13 @@ export function createAntigravityProvider(
       const errMsg = ctx.errorMessage || "";
       const code = ctx.code || "";
 
+      // 0. Local request-shape rejection (unsupported reasoning level): retrying the same
+      // request fails the same way, so report it as non-retryable `format`
+      // (features.md#reasoning-effort).
+      if (/unsupported reasoning effort/i.test(errMsg)) {
+        return "format";
+      }
+
       // 1. Rate limit & quota
       if (ctx.status === 429 || /quota|resource_exhausted/i.test(errMsg)) {
         return "rate_limit";

@@ -12,6 +12,14 @@ agy patch = plugin patch ÷ 100). See [docs/install-and-release.md](docs/install
 
 - Prepare ClawHub publishing: npm package renamed to `@predator-1/openclaw-antigravity-oauth` (plugin id and release asset names unchanged), `openclaw.build.openclawVersion` added, plugin description states it is unofficial and not affiliated with Google.
 
+## [1.5.302] - 2026-11-14
+
+Targets agy 1.5.3. Plugin-only fixes.
+
+### Fixed
+
+- Thinking `off` on a model that cannot disable reasoning (`gemini-3.8-flash`, Argon, Claude) omits the thinking field instead of failing the turn, so OpenClaw's setup-inference probe (Custodian) starts. Unsupported reasoning levels are classified as `format` so the host stops retrying ([#34](https://github.com/predator-1/openclaw-antigravity-oauth/issues/34)).
+
 ## [1.5.301] - 2026-11-08
 
 Targets agy 1.5.3. Plugin-only fixes.

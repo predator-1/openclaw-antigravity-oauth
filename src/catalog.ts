@@ -156,7 +156,7 @@ interface RawUsagePayload {
   plan?: string;
 }
 
-type EffortTier = "low" | "medium" | "high" | "tiered";
+type EffortTier = "low" | "medium" | "high" | "xhigh" | "tiered";
 
 const VALID_REASONING_LEVELS: ReadonlySet<ReasoningLevel> = new Set([
   "off",
@@ -187,6 +187,33 @@ export const EXTENDED_THINKING_LEVEL_MODELS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Tiered families whose ladder includes a real `-xhigh` slug (issue #37, 2026-11-14). Each level
+ * routes to `<id>-<level>`; the tier ids skip thinkingConfig like Argon. No `max` (no upstream
+ * tier), no `off` (cannot disable reasoning). A level is advertised only when its slug is listed.
+ */
+export const SLUG_LADDER_FAMILIES: Readonly<Record<string, readonly ReasoningLevel[]>> = Object.freeze({
+  "gemini-4-hydrogen": Object.freeze(["low", "medium", "high", "xhigh"] as ReasoningLevel[])
+});
+
+/**
+ * Upstream ids that look like chat models but are not published (issue #37, 2026-11-14):
+ * `gemini-pro-orchestrator-g1-pro` ("Orchestrator (Argon)" in `agy models`). No recorded
+ * fetchAvailableModels fields show an ordinary enabled user-selectable chat model; see
+ * docs/features.md#gemini-4-hydrogen-and-the-orchestrator-model.
+ */
+/**
+ * Max output fallback when fetchAvailableModels omits it, per family. Hydrogen: agy 1.5.9
+ * defaultmodels.GeminiModelInfo sets MaxOutputTokens 65536 for every Hydrogen tier (2026-11-14).
+ */
+const DEFAULT_MAX_OUTPUT_TOKENS: Readonly<Record<string, number>> = Object.freeze({
+  "gemini-4-hydrogen": 65_536
+});
+
+const UNPUBLISHED_UPSTREAM_ID_PATTERNS: readonly RegExp[] = Object.freeze([
+  /^gemini-pro-orchestrator-/i
+]);
+
+/**
  * Published chat slugs without proto aliases; evidence (Routing lists, 2026-11-06):
  * docs/protocol.md#fetchavailablemodels-schema-from-agys-protos
  */
@@ -205,6 +232,7 @@ export const KNOWN_DISPLAY_NAME_OVERRIDES: Readonly<Record<string, string>> = Ob
   ...PUBLISHED_SLUG_ONLY_MODELS,
   "gemini-3.8-flash": "Gemini 3.8 Flash",
   "gemini-4-argon": "Gemini 4 Argon",
+  "gemini-4-hydrogen": "Gemini 4 Hydrogen",
   "claude-opus-5-5": "Claude Opus 5.5",
   "claude-sonnet-5-5": "Claude Sonnet 5.5",
   "gpt-oss-120b": "GPT-OSS 120B"
@@ -214,6 +242,7 @@ const EFFORT_TIERED_FAMILIES: ReadonlySet<string> = new Set([
   "claude-sonnet-5-5",
   "claude-opus-5-5",
   "gemini-4-argon",
+  "gemini-4-hydrogen",
   "gemini-3.8-flash"
 ]);
 
@@ -242,6 +271,17 @@ export const PROTO_MODEL_ID_MAP: Readonly<
   "gemini-4-argon-medium": { canonicalId: "gemini-4-argon", effortTier: "medium" },
   "gemini-4-argon-high": { canonicalId: "gemini-4-argon", effortTier: "high" },
   "gemini-3.8-flash-tiered": { canonicalId: "gemini-3.8-flash", effortTier: "tiered" },
+  // Incoming aliases only (never sent upstream): the agy 1.5.9 built-in model table
+  // (defaultmodels.Gemini4Hydrogen) assigns these Model enum slots per tier;
+  // docs/protocol.md#model-ids-2026-11-02.
+  MODEL_PLACEHOLDER_M463: { canonicalId: "gemini-4-hydrogen", effortTier: "low" },
+  MODEL_PLACEHOLDER_M462: { canonicalId: "gemini-4-hydrogen", effortTier: "medium" },
+  MODEL_PLACEHOLDER_M461: { canonicalId: "gemini-4-hydrogen", effortTier: "high" },
+  MODEL_PLACEHOLDER_M464: { canonicalId: "gemini-4-hydrogen", effortTier: "xhigh" },
+  "gemini-4-hydrogen-low": { canonicalId: "gemini-4-hydrogen", effortTier: "low" },
+  "gemini-4-hydrogen-medium": { canonicalId: "gemini-4-hydrogen", effortTier: "medium" },
+  "gemini-4-hydrogen-high": { canonicalId: "gemini-4-hydrogen", effortTier: "high" },
+  "gemini-4-hydrogen-xhigh": { canonicalId: "gemini-4-hydrogen", effortTier: "xhigh" },
   chat_20706: { canonicalId: "gemini-3-flash" },
   chat_23310: { canonicalId: "gemini-3-flash" }
 });
@@ -300,9 +340,9 @@ export function parseEffortVariant(
   }
 
   const cleanDisplayName = rawDisplayName
-    .replace(/\s*\((?:low|medium|high|tiered)\)\s*$/i, "")
+    .replace(/\s*\((?:low|medium|high|xhigh|tiered)\)\s*$/i, "")
     .trim();
-  const match = /^(.*)-(low|medium|high|tiered)$/i.exec(rawId);
+  const match = /^(.*)-(low|medium|high|xhigh|tiered)$/i.exec(rawId);
   if (!match || !match[1] || !match[2]) {
     return {
       canonicalId: rawId,
@@ -488,6 +528,12 @@ export function isEligibleChatModel(
     }
   }
 
+  for (const pattern of UNPUBLISHED_UPSTREAM_ID_PATTERNS) {
+    if (pattern.test(id)) {
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -529,7 +575,7 @@ export function normalizeModelRow(
           ? raw.maxOutput
           : typeof raw.maxTokens === "number" && raw.maxTokens > 0
             ? raw.maxTokens
-            : 8_192;
+            : DEFAULT_MAX_OUTPUT_TOKENS[canonicalId] ?? 8_192;
 
   const canDisableReasoning =
     typeof raw.canDisableReasoning === "boolean"
@@ -685,6 +731,19 @@ export class CatalogService {
     const directMatch = this.cachedModels.find((m) => m.id === bareModelId);
     if (directMatch) {
       const variants = this.variantMap.get(bareModelId);
+      const slugLadder = SLUG_LADDER_FAMILIES[bareModelId];
+      if (slugLadder) {
+        // Each advertised level has its own slug; never fall back from xhigh to -high.
+        const desiredTier: EffortTier =
+          reasoningEffort !== undefined && slugLadder.includes(reasoningEffort)
+            ? (reasoningEffort as EffortTier)
+            : "medium";
+        return {
+          matchedModel: directMatch,
+          upstreamModelId: variants?.[desiredTier] ?? `${bareModelId}-${desiredTier}`,
+          ...(reasoningEffort !== undefined ? { effectiveEffort: reasoningEffort } : {})
+        };
+      }
       if (variants && Object.keys(variants).length > 0) {
         let desiredTier: EffortTier =
           reasoningEffort === "low" || reasoningEffort === "medium" || reasoningEffort === "high"
@@ -854,7 +913,17 @@ export class CatalogService {
         continue;
       }
 
-      if (EFFORT_TIERED_FAMILIES.has(row.id)) {
+      const slugLadder = SLUG_LADDER_FAMILIES[row.id];
+      if (slugLadder) {
+        const listed = this.variantMap.get(row.id) ?? {};
+        row = {
+          ...row,
+          canDisableReasoning: false,
+          reasoningLevels: Object.freeze(
+            slugLadder.filter((lvl) => listed[lvl as EffortTier] !== undefined)
+          )
+        };
+      } else if (EFFORT_TIERED_FAMILIES.has(row.id)) {
         const tiers: ReasoningLevel[] = row.canDisableReasoning
           ? ["off", "low", "medium", "high"]
           : ["low", "medium", "high"];
@@ -1138,10 +1207,14 @@ export class CatalogService {
     const hasSummaryGeminiGroup = summaryBuckets.some(
       (b) =>
         /gemini/i.test(b.groupDisplayName ?? "") &&
-        !/argon/i.test(b.groupDisplayName ?? "")
+        !/argon/i.test(b.groupDisplayName ?? "") &&
+        !/hydrogen/i.test(b.groupDisplayName ?? "")
     );
     const hasSummaryArgonGroup = summaryBuckets.some(
       (b) => /argon/i.test(b.groupDisplayName ?? "") || /argon/i.test(b.bucketId ?? "")
+    );
+    const hasSummaryHydrogenGroup = summaryBuckets.some(
+      (b) => /hydrogen/i.test(b.groupDisplayName ?? "") || /hydrogen/i.test(b.bucketId ?? "")
     );
 
     const finalBuckets: QuotaBucketInfo[] = [];
@@ -1182,6 +1255,7 @@ export class CatalogService {
 
     const geminiModels: RawQuotaBucket[] = [];
     const argonModels: RawQuotaBucket[] = [];
+    const hydrogenModels: RawQuotaBucket[] = [];
     const claudeModels: RawQuotaBucket[] = [];
     const otherModels: RawQuotaBucket[] = [];
 
@@ -1189,6 +1263,8 @@ export class CatalogService {
       const mId = b.modelId ?? "";
       if (/argon/i.test(mId)) {
         argonModels.push(b);
+      } else if (/^gemini-4-hydrogen(?:-|$)/i.test(mId)) {
+        hydrogenModels.push(b);
       } else if (/gemini/i.test(mId)) {
         geminiModels.push(b);
       } else if (/claude|gpt/i.test(mId)) {
@@ -1307,6 +1383,39 @@ export class CatalogService {
           ...(isExhaustedOrDisabled ? { remainingFraction: 0 } : typeof b.remainingFraction === "number" ? { remainingFraction: b.remainingFraction } : {}),
           ...(b.resetTime ? { resetTime: b.resetTime } : {}),
           ...(isExhaustedOrDisabled ? { disabled: true } : typeof b.disabled === "boolean" ? { disabled: b.disabled } : {})
+        });
+      }
+    }
+
+    // 3b. Gemini 4 Hydrogen tier buckets (issue #37): own group per window, so they neither split
+    // the shared Gemini row nor land in the Argon group. Real bucket names are unverified.
+    if (!hasSummaryHydrogenGroup && hydrogenModels.length > 0) {
+      const byWindow = new Map<string, RawQuotaBucket[]>();
+      for (const m of hydrogenModels) {
+        const win = m.window ?? "weekly";
+        const list = byWindow.get(win) ?? [];
+        list.push(m);
+        byWindow.set(win, list);
+      }
+      for (const [win, list] of byWindow) {
+        // Most constrained tier first, so the shared group row never overstates what is left.
+        const sorted = [...list].sort(
+          (a, b) =>
+            (typeof a.remainingFraction === "number" ? a.remainingFraction : 1) -
+            (typeof b.remainingFraction === "number" ? b.remainingFraction : 1)
+        );
+        const first = sorted[0];
+        if (!first) continue;
+        finalBuckets.push({
+          groupDisplayName: "Gemini 4 Hydrogen",
+          displayName: "Gemini 4 Hydrogen",
+          ...(first.modelId ? { modelId: first.modelId } : {}),
+          window: win,
+          ...(typeof first.remainingFraction === "number"
+            ? { remainingFraction: first.remainingFraction }
+            : {}),
+          ...(first.resetTime ? { resetTime: first.resetTime } : {}),
+          ...(typeof first.disabled === "boolean" ? { disabled: first.disabled } : {})
         });
       }
     }

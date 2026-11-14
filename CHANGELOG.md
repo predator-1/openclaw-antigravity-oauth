@@ -8,6 +8,14 @@ agy patch = plugin patch ÷ 100). See [docs/install-and-release.md](docs/install
 
 ## [Unreleased]
 
+### Added
+
+- Gemini 4 Hydrogen as one model, `antigravity/gemini-4-hydrogen`, with effort levels `low|medium|high|xhigh` (default `medium`), each sent as its own `gemini-4-hydrogen-<level>` upstream model without `thinkingConfig`; agy 1.5.9's `MODEL_PLACEHOLDER_M461`–`M464` resolve as aliases; media understanding with `gemini-4-hydrogen` uses `gemini-4-hydrogen-medium` upstream ([#37](https://github.com/predator-1/openclaw-antigravity-oauth/issues/37)).
+
+### Changed
+
+- `gemini-pro-orchestrator-g1-pro` ("Orchestrator (Argon)") is not published as a chat model ([#37](https://github.com/predator-1/openclaw-antigravity-oauth/issues/37)).
+
 ## [1.5.302] - 2026-11-14
 
 Targets agy 1.5.3. Plugin-only fixes.

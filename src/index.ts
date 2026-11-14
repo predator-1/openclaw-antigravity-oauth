@@ -8,6 +8,7 @@ import {
 import {
   CatalogService,
   EXTENDED_THINKING_LEVEL_MODELS,
+  SLUG_LADDER_FAMILIES,
   toOpenClawCatalogModelDefinition
 } from "./catalog.js";
 import { DEFAULT_ENDPOINTS, DEFAULT_PROJECT_ID, PLUGIN_ID, PROVIDER_ID } from "./constants.js";
@@ -1375,6 +1376,10 @@ export function createAntigravityProvider(
       }
       if (EXTENDED_THINKING_LEVEL_MODELS.has(bareModelId)) {
         return thinkingProfileFromLevels(["low", "medium", "high", "xhigh", "max"]);
+      }
+      const slugLadder = SLUG_LADDER_FAMILIES[bareModelId];
+      if (slugLadder) {
+        return thinkingProfileFromLevels(slugLadder);
       }
       return thinkingProfileFromLevels(["low", "medium", "high"]);
     },

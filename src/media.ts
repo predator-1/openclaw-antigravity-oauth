@@ -124,6 +124,11 @@ function resolveUpstreamModelSlug(rawModel?: string): { canonicalId: string; ups
   if (modelId === "gemini-4-argon" || modelId === "MODEL_PLACEHOLDER_M124") {
     return { canonicalId: "gemini-4-argon", upstreamSlug: "gemini-4-argon-medium" };
   }
+  // agy 1.5.9 built-in table: every Hydrogen tier is image/PDF/video capable; the bare
+  // canonical id is not an upstream slug, so media requests use the default tier.
+  if (modelId === "gemini-4-hydrogen") {
+    return { canonicalId: "gemini-4-hydrogen", upstreamSlug: "gemini-4-hydrogen-medium" };
+  }
   return { canonicalId: modelId, upstreamSlug: modelId };
 }
 

@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  buildAntigravityMediaUnderstandingProvider,
   CatalogService,
   createAntigravityProvider,
   DEFAULT_ENDPOINTS,
@@ -470,5 +471,37 @@ describe("Gemini 4 Hydrogen (issue #37)", () => {
       1,
       "Hydrogen shown once (summary group wins, per-model Hydrogen rows not duplicated)"
     );
+  });
+});
+
+describe("issue #37: Gemini 4 Hydrogen media understanding", () => {
+  it("media requests for gemini-4-hydrogen go upstream as gemini-4-hydrogen-medium", async () => {
+    const sentModels: string[] = [];
+    const mockFetch: FetchLike = async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as { model: string };
+      sentModels.push(body.model);
+      return sseResponse([
+        { response: { candidates: [{ content: { role: "model", parts: [{ text: "A short clip." }] } }] } }
+      ]);
+    };
+    const media = buildAntigravityMediaUnderstandingProvider({ fetchFn: mockFetch });
+    const apiKey = JSON.stringify({ token: "ya29.test_token", projectId: "test-project" });
+
+    const video = await media.describeVideo({
+      buffer: Buffer.from("fake-mp4-bytes"),
+      fileName: "clip.mp4",
+      model: "antigravity/gemini-4-hydrogen",
+      apiKey
+    } as any);
+    const audio = await media.transcribeAudio({
+      buffer: Buffer.from("fake-wav-bytes"),
+      fileName: "note.wav",
+      model: "gemini-4-hydrogen",
+      apiKey
+    } as any);
+
+    assert.deepEqual(sentModels, ["gemini-4-hydrogen-medium", "gemini-4-hydrogen-medium"]);
+    assert.equal(video.model, "gemini-4-hydrogen");
+    assert.equal(audio.model, "gemini-4-hydrogen");
   });
 });

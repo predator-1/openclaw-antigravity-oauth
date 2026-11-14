@@ -1,6 +1,7 @@
 // Issue #37: Gemini 4 Hydrogen (low|medium|high|xhigh) and gemini-pro-orchestrator-g1-pro.
 // Hermetic only: fetch is mocked, no live calls. Fixture slugs and display names come from
-// `agy models` (agy 1.5.7, 2026-11-14) as recorded in the issue; no proto ids are invented.
+// `agy models` (agy 1.5.7 in the issue; re-checked with agy 1.5.9 on 2026-11-14). Proto ids and
+// the 65536 max output come from the agy 1.5.9 built-in table (docs/protocol.md#model-ids-2026-11-02).
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
@@ -10,6 +11,7 @@ import {
   InMemoryAuthProfileStore,
   KNOWN_CATALOG_MODELS,
   parseEffortVariant,
+  PROTO_MODEL_ID_MAP,
   toOpenClawCatalogModelDefinition,
   type FetchLike
 } from "../dist/index.js";
@@ -162,6 +164,7 @@ describe("Gemini 4 Hydrogen (issue #37)", () => {
     assert.deepEqual(hydrogen.reasoningLevels, ["low", "medium", "high", "xhigh"]);
     assert.equal(hydrogen.canDisableReasoning, false);
     assert.equal(hydrogen.contextWindow, 1_000_000);
+    assert.equal(hydrogen.maxOutputTokens, 65_536, "agy 1.5.9 default when upstream omits max output");
 
     const published = toOpenClawCatalogModelDefinition(hydrogen, DEFAULT_ENDPOINTS.chatCompletionsUrl);
     assert.equal(published.id, "gemini-4-hydrogen");
@@ -246,6 +249,51 @@ describe("Gemini 4 Hydrogen (issue #37)", () => {
       /unsupported reasoning effort "xhigh" for model gemini-4-hydrogen \(valid: low, medium, high\)/
     );
     assert.equal(bodies.length, 0);
+  });
+
+  it("agy 1.5.9 proto ids M463/M462/M461/M464 are incoming aliases for the low/medium/high/xhigh slugs", async () => {
+    assert.deepEqual(
+      ["MODEL_PLACEHOLDER_M463", "MODEL_PLACEHOLDER_M462", "MODEL_PLACEHOLDER_M461", "MODEL_PLACEHOLDER_M464"].map(
+        (id) => PROTO_MODEL_ID_MAP[id]
+      ),
+      [
+        { canonicalId: "gemini-4-hydrogen", effortTier: "low" },
+        { canonicalId: "gemini-4-hydrogen", effortTier: "medium" },
+        { canonicalId: "gemini-4-hydrogen", effortTier: "high" },
+        { canonicalId: "gemini-4-hydrogen", effortTier: "xhigh" }
+      ]
+    );
+    const { provider, bodies } = await harness(FULL_FIXTURE);
+    const expected: Record<string, string> = {
+      MODEL_PLACEHOLDER_M463: "gemini-4-hydrogen-low",
+      MODEL_PLACEHOLDER_M462: "gemini-4-hydrogen-medium",
+      MODEL_PLACEHOLDER_M461: "gemini-4-hydrogen-high",
+      MODEL_PLACEHOLDER_M464: "gemini-4-hydrogen-xhigh"
+    };
+    for (const [alias, slug] of Object.entries(expected)) {
+      await provider.completeTurn({ model: `antigravity/${alias}`, messages: [{ role: "user", content: "ping" }] });
+      assert.equal(bodies.at(-1)?.model, slug, `${alias} is sent as its slug, never as the placeholder`);
+      assert.equal(bodies.at(-1)?.request?.generationConfig, undefined);
+    }
+    // Regression: existing proto aliases are unchanged.
+    const existing = ["M317", "M318", "M319", "M320", "M322", "M124", "M400", "M401", "M402", "M403", "M404", "M405"];
+    assert.deepEqual(
+      Object.fromEntries(existing.map((m) => [m, PROTO_MODEL_ID_MAP[`MODEL_PLACEHOLDER_${m}`]])),
+      {
+        M317: { canonicalId: "gemini-4-argon", effortTier: "low" },
+        M318: { canonicalId: "gemini-4-argon", effortTier: "medium" },
+        M319: { canonicalId: "gemini-4-argon", effortTier: "high" },
+        M320: { canonicalId: "gemini-4-argon" },
+        M322: { canonicalId: "gemini-3.8-flash", effortTier: "tiered" },
+        M124: { canonicalId: "gemini-4-argon" },
+        M400: { canonicalId: "claude-opus-5-5", effortTier: "low" },
+        M401: { canonicalId: "claude-opus-5-5", effortTier: "medium" },
+        M402: { canonicalId: "claude-opus-5-5", effortTier: "high" },
+        M403: { canonicalId: "claude-sonnet-5-5", effortTier: "low" },
+        M404: { canonicalId: "claude-sonnet-5-5", effortTier: "medium" },
+        M405: { canonicalId: "claude-sonnet-5-5", effortTier: "high" }
+      }
+    );
   });
 
   it("orchestrator verdict: gemini-pro-orchestrator-g1-pro is not published and fails as an unknown model", async () => {

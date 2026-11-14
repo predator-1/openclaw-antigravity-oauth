@@ -201,6 +201,14 @@ export const SLUG_LADDER_FAMILIES: Readonly<Record<string, readonly ReasoningLev
  * fetchAvailableModels fields show an ordinary enabled user-selectable chat model; see
  * docs/features.md#gemini-4-hydrogen-and-the-orchestrator-model.
  */
+/**
+ * Max output fallback when fetchAvailableModels omits it, per family. Hydrogen: agy 1.5.9
+ * defaultmodels.GeminiModelInfo sets MaxOutputTokens 65536 for every Hydrogen tier (2026-11-14).
+ */
+const DEFAULT_MAX_OUTPUT_TOKENS: Readonly<Record<string, number>> = Object.freeze({
+  "gemini-4-hydrogen": 65_536
+});
+
 const UNPUBLISHED_UPSTREAM_ID_PATTERNS: readonly RegExp[] = Object.freeze([
   /^gemini-pro-orchestrator-/i
 ]);
@@ -263,7 +271,13 @@ export const PROTO_MODEL_ID_MAP: Readonly<
   "gemini-4-argon-medium": { canonicalId: "gemini-4-argon", effortTier: "medium" },
   "gemini-4-argon-high": { canonicalId: "gemini-4-argon", effortTier: "high" },
   "gemini-3.8-flash-tiered": { canonicalId: "gemini-3.8-flash", effortTier: "tiered" },
-  // Slug ids only: Hydrogen's MODEL_PLACEHOLDER_* proto ids are unknown (docs/protocol.md#model-ids-2026-11-02).
+  // Incoming aliases only (never sent upstream): the agy 1.5.9 built-in model table
+  // (defaultmodels.Gemini4Hydrogen) assigns these Model enum slots per tier;
+  // docs/protocol.md#model-ids-2026-11-02.
+  MODEL_PLACEHOLDER_M463: { canonicalId: "gemini-4-hydrogen", effortTier: "low" },
+  MODEL_PLACEHOLDER_M462: { canonicalId: "gemini-4-hydrogen", effortTier: "medium" },
+  MODEL_PLACEHOLDER_M461: { canonicalId: "gemini-4-hydrogen", effortTier: "high" },
+  MODEL_PLACEHOLDER_M464: { canonicalId: "gemini-4-hydrogen", effortTier: "xhigh" },
   "gemini-4-hydrogen-low": { canonicalId: "gemini-4-hydrogen", effortTier: "low" },
   "gemini-4-hydrogen-medium": { canonicalId: "gemini-4-hydrogen", effortTier: "medium" },
   "gemini-4-hydrogen-high": { canonicalId: "gemini-4-hydrogen", effortTier: "high" },
@@ -561,7 +575,7 @@ export function normalizeModelRow(
           ? raw.maxOutput
           : typeof raw.maxTokens === "number" && raw.maxTokens > 0
             ? raw.maxTokens
-            : 8_192;
+            : DEFAULT_MAX_OUTPUT_TOKENS[canonicalId] ?? 8_192;
 
   const canDisableReasoning =
     typeof raw.canDisableReasoning === "boolean"

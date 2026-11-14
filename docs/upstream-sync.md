@@ -1,6 +1,6 @@
 # Upstream sync (new agy release)
 
-`scripts/sync-upstream-vars.js` compares the installed `agy` binary with the shared baseline `upstream/agy-fingerprint.json`. agy ships one version for every OS/arch at the same time and compared fingerprint fields are identical across platforms, so the check can run on any OS. Policy (2026-11-06): any agy version change means an investigation of what changed, then adoption.
+`scripts/sync-upstream-vars.js` compares the installed `agy` binary with the shared baseline `upstream/agy-fingerprint.json`. agy ships one version for every OS/arch at the same time and compared fingerprint fields are identical across platforms, so the check can run on any OS (exception, 2026-11-14, agy 1.5.9: `googleHosts.other` differs darwin-arm64 vs linux-x64, darwin lacks `iam.googleapis.com`; see [#42](https://github.com/predator-1/openclaw-antigravity-oauth/issues/42)). Policy (2026-11-06): any agy version change means an investigation of what changed, then adoption.
 
 ## Commands
 

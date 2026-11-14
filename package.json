@@ -1,8 +1,8 @@
 {
-  "name": "openclaw-antigravity-oauth",
+  "name": "@predator-1/openclaw-antigravity-oauth",
   "version": "1.5.302",
   "private": true,
-  "description": "OpenClaw provider plugin for the Antigravity subscription",
+  "description": "Unofficial OpenClaw provider plugin for the Antigravity subscription",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -26,6 +26,9 @@
     "compat": {
       "pluginApi": ">=2026.10.8",
       "minGatewayVersion": "2026.10.8"
+    },
+    "build": {
+      "openclawVersion": "2026.11.1"
     }
   },
   "scripts": {

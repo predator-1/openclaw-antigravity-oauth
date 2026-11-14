@@ -5,7 +5,7 @@ import type { AntigravityEndpoints } from "./types.js";
 export const PROVIDER_ID = "antigravity" as const;
 export const PLUGIN_ID = "openclaw-antigravity-oauth" as const;
 
-export const CLI_VERSION = "1.5.3" as const;
+export const CLI_VERSION = "1.5.9" as const;
 
 const AGY_OS_NAMES: Record<string, string> = { win32: "windows", sunos: "solaris" };
 const AGY_ARCH_NAMES: Record<string, string> = { x64: "amd64", ia32: "386" };

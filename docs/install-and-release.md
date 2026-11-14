@@ -12,7 +12,7 @@
 
 ```bash
 openclaw plugins install git:github.com/predator-1/openclaw-antigravity-oauth@release   # follows releases
-openclaw plugins install git:github.com/predator-1/openclaw-antigravity-oauth@v1.5.302 # pinned
+openclaw plugins install git:github.com/predator-1/openclaw-antigravity-oauth@v1.5.900 # pinned
 openclaw plugins inspect openclaw-antigravity-oauth --runtime
 openclaw models auth login --provider antigravity --method oauth
 ```
@@ -22,9 +22,9 @@ Finding 2026-11-07 (OpenClaw 2026.10.10, clean state, no GitHub credentials): a 
 Optional tarball install (offline or air-gapped hosts):
 
 ```bash
-gh release download v1.5.302 -R predator-1/openclaw-antigravity-oauth -p 'openclaw-antigravity-oauth-1.5.302.tgz' -p SHA256SUMS
+gh release download v1.5.900 -R predator-1/openclaw-antigravity-oauth -p 'openclaw-antigravity-oauth-1.5.900.tgz' -p SHA256SUMS
 sha256sum -c --ignore-missing SHA256SUMS      # macOS: shasum -a 256 -c --ignore-missing SHA256SUMS
-openclaw plugins install npm-pack:./openclaw-antigravity-oauth-1.5.302.tgz --force
+openclaw plugins install npm-pack:./openclaw-antigravity-oauth-1.5.900.tgz --force
 ```
 
 `openclaw plugins update` cannot discover newer GitHub Releases for an `npm-pack:` install; reinstall the newer tarball with `--force`.
@@ -58,6 +58,7 @@ plugin version = <agyMajor>.<agyMinor>.<agyPatch * 100 + fix>     fix = 00..99
 | 1.5.1 | `1.5.100` | first release for agy 1.5.1 |
 | 1.5.2 | `1.5.200` | first release for agy 1.5.2 |
 | 1.5.3 | `1.5.300` | adoption after [protocol review](protocol.md#agy-153-2026-11-07) |
+| 1.5.9 | `1.5.900` | adoption after [protocol review](protocol.md#agy-159-2026-11-14) (1.5.4–1.5.9 reviewed) |
 
 - Back-mapping: agy patch = `floor(pluginPatch / 100)`, fix = `pluginPatch % 100`.
 - Plain `x.y.z` only, so fixes sort above their base in semver.

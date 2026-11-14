@@ -828,7 +828,7 @@ function buildV1InternalRequestEnvelope(
     ];
   }
 
-  const isPreTieredModel = /-(?:low|medium|high)$/i.test(bareModelId);
+  const isPreTieredModel = /-(?:low|medium|high|xhigh)$/i.test(bareModelId);
   if (request.reasoningEffort !== undefined && !isPreTieredModel) {
     if (request.reasoningEffort === "off") {
       innerRequest.generationConfig = {

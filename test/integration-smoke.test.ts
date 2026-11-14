@@ -242,11 +242,11 @@ describe("integration-smoke: catalog check", () => {
   it("reports no additions or removals for an upstream list made of every known id", async () => {
     const catalog = await import(pathToFileURL(path.resolve("dist/catalog.js")).href);
     const known = catalog.KNOWN_CATALOG_MODELS;
-    assert.equal(known.length, 7);
+    assert.equal(known.length, 8);
     assert.equal(new Set(known).size, known.length);
     const result = smoke.evaluateCatalog(known.map((id: string) => ({ id })), known);
     assert.equal(result.status, "pass");
-    assert.deepEqual(result.data, { total: 7, added: [], removed: [] });
+    assert.deepEqual(result.data, { total: 8, added: [], removed: [] });
   });
 
   it("compares upstream against published models only; legacy mapping ids are never 'removed'", async () => {
@@ -257,7 +257,7 @@ describe("integration-smoke: catalog check", () => {
     }
     const published = [
       "claude-opus-5-5", "claude-sonnet-5-5", "gemini-3-flash",
-      "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-4-argon", "gpt-oss-120b"
+      "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-4-argon", "gemini-4-hydrogen", "gpt-oss-120b"
     ];
     assert.deepEqual(catalog.KNOWN_CATALOG_MODELS, published);
     const res = smoke.evaluateCatalog(published.map((id) => ({ id })), catalog.KNOWN_CATALOG_MODELS);

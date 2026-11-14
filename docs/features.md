@@ -9,6 +9,7 @@ Catalog: `api.registerProvider({ catalog })`, discovered live from `fetchAvailab
 | id | upstream | context | images |
 |---|---|---|---|
 | `gemini-4-argon` | `gemini-4-argon-low`, `-medium`, `-high` (`MODEL_PLACEHOLDER_M124` is a dead incoming alias only) | 1M | yes |
+| `gemini-4-hydrogen` | `gemini-4-hydrogen-low`, `-medium`, `-high`, `-xhigh` (proto ids unknown) | 1M | yes (Gemini default) |
 | `gemini-3.8-flash` | `gemini-3.8-flash-tiered` (M322) | 1M | yes |
 | `claude-opus-5-5` | `claude-opus-5-5-<tier>` | 1M | yes |
 | `claude-sonnet-5-5` | `claude-sonnet-5-5-<tier>` | 1M | yes |
@@ -21,7 +22,8 @@ Provider-model config boundary (2026-11-07): OAuth `configPatch` and `catalog.ru
 
 Filtering (`isEligibleChatModel`, `NON_CHAT_ID_PATTERNS` in `src/constants.ts`):
 - dropped: `disabled: true` (upstream field; `enabled: false` is still honored if present); ids in the payload `deprecatedModelIds` list (raw slug, proto `model`, or canonical id); non-chat modalities and ids (`image`, `imagen`, `veo`, `chirp`, `embedding`, `tts`, `whisper`, `audio`, `video`, `speech`); `chat_*`, `tab_*`, `MODEL_*`; `gemini-2.5-*`, `gemini-3.1-*`; other `gemini-3.5-*` ids except `gemini-3.5-flash-lite` (and optional `-low|-medium|-high|-tiered` variants).
-- Effort-suffixed variants (`-low`, `-medium`, `-high`, `-tiered`, `(Low)`…) collapse into one canonical row with merged `reasoningLevels`.
+- Effort-suffixed variants (`-low`, `-medium`, `-high`, `-xhigh`, `-tiered`, `(Low)`, `(XHigh)`…) collapse into one canonical row with merged `reasoningLevels`.
+- Not published by decision: `gemini-pro-orchestrator-g1-pro` (`UNPUBLISHED_UPSTREAM_ID_PATTERNS`, see [Gemini 4 Hydrogen and the orchestrator model](#gemini-4-hydrogen-and-the-orchestrator-model)).
 - Context window = `max(upstream, inferDefaultContextWindow(id))`: Gemini, Argon and Claude 5.x get 1M (upstream reports 128k placeholders).
 - `off` is advertised only when `canDisableReasoning` is true.
 - Display names are corrected by `KNOWN_DISPLAY_NAME_OVERRIDES` (upstream mislabels several).
@@ -33,6 +35,7 @@ Filtering (`isEligibleChatModel`, `NON_CHAT_ID_PATTERNS` in `src/constants.ts`):
 `CatalogService.resolveModelForTurn` maps OpenClaw's effort to an upstream model:
 - Claude: `<id>-<low|medium|high>`; default `medium`; Opus without a medium variant uses `high`. `/think xhigh` and `/think max` are rejected with that model's valid options (`low`, `medium`, `high`).
 - `gemini-4-argon`: `<id>-<low|medium|high>`; default `medium`. `MODEL_PLACEHOLDER_M124` (and M317–M320) stay incoming aliases so stale config still resolves; they are never sent upstream (2026-11-06). `/think xhigh` / `/think max` are **not** advertised for Argon: those `gemini-4-argon-<tier>` ids skip `thinkingConfig`, so advertising `xhigh`/`max` would lie. Revisit sending `gemini-4-argon-high` + `thinkingLevel`, or keep Argon without them.
+- `gemini-4-hydrogen`: `<id>-<low|medium|high|xhigh>`; default `medium`. `xhigh` routes to the real `-xhigh` slug, never to `-high`, and is advertised only when that slug is listed. Like Argon, the tier ids skip `thinkingConfig`. `max` is rejected; `off` follows the rule below (2026-11-14, [decision](#gemini-4-hydrogen-and-the-orchestrator-model)).
 - `gemini-3.8-flash`: `gemini-3.8-flash-tiered` with the same `thinkingLevel` mapping (`LOW|MEDIUM|HIGH|EXTRA_HIGH|MAX`). `/think xhigh` maps to `EXTRA_HIGH`; `/think max` maps to `MAX`.
 - `off`: models with `canDisableReasoning` send `thinkingBudget: 0`. On any other model `off` is treated as no effort for the whole turn: no `thinkingConfig`, no `reasoning_effort`, model routing as with no effort. Other levels outside the model's list fail the turn with `unsupported reasoning effort`, which `classifyFailoverReason` reports as `format`.
 
@@ -48,6 +51,16 @@ Failover kind (2026-11-13, host 2026.11.2 `dist/`): `classifyFailoverReason` ret
 - `null`/`unclassified` enables `[empty-error-retry]` (`MAX_EMPTY_ERROR_RETRIES = 3`, `dist/embedded-agent-BJe8xfTT.mjs:1850`, `:1906-1918`), then `exhaustedUnclassifiedSilentError` forces `fallback_model` with reason `unknown` (`:1926`, `:1970`). This is the reported 3× retry and same-model fallback.
 - `format` is not `unclassifiedError`, so no empty-error retry and no forced fallback. `isTerminalFormatFailure` returns `surface_error` (`:1774`, `:1825`); the retry-limit stage excludes `format` from `fallback_model` (`:1800`); `auth-profile-failure-policy-tXEAKYJg.mjs:71` records no profile cooldown; `model-fallback-runner-DC_EqCLW.mjs:44` keeps the transient probe slot. Host docs `docs/concepts/model-failover.md`: format errors are terminal and not rotated.
 - Caveat: `isFailoverAssistantError` (`dist/assistant-message-failures-Zz_OU1Uq.mjs:37`) classifies without the provider hook, so for this plugin-only classification `failoverFailure` can be false and the decision is `continue_normal` (error returned, no retry, no fallback) rather than `surface_error`. Either path stops the retry loop. Not observed at runtime.
+
+## Gemini 4 Hydrogen and the orchestrator model
+
+Decision (2026-11-14, issue #37, team lead). Evidence: dry `npm run sync:upstream` on `main` `00a555f` (installed agy 1.5.7, baseline 1.5.3) added five slugs to the fingerprint `models`; `agy models` shows `Gemini 4 Hydrogen (Low|Medium|High|XHigh)` and `Orchestrator (Argon)` (both as recorded in the issue). No live call was made for this decision.
+- Hydrogen is one row, `gemini-4-hydrogen` "Gemini 4 Hydrogen", ladder `low|medium|high|xhigh` (`SLUG_LADDER_FAMILIES`, `src/catalog.ts`), default `medium`, `canDisableReasoning: false`, `compat.supportedReasoningEfforts` = the listed levels. Each level is sent as `gemini-4-hydrogen-<level>`; the turn sends no `thinkingConfig` (`-xhigh` counts as pre-tiered in `src/turn.ts`). `max`: no upstream tier, rejected before any call. `off`: no effort, sends `-medium` (#34).
+- `EffortTier`, `parseEffortVariant` and the display-name cleanup know `xhigh`. Argon, 3.8 Flash, Claude and GPT-OSS rows and routing are unchanged (snapshot in `test/hydrogen.test.ts`).
+- Before this change `main` published `gemini-4-hydrogen` (`low|medium|high`) plus a separate `gemini-4-hydrogen-xhigh` "Gemini 4 Hydrogen (XHigh)" row, rejected `xhigh`, and published `gemini-pro-orchestrator-g1-pro` "Orchestrator (Argon)" as a sendable chat model (hermetic fixture, mocked fetch).
+- Quota: per-model buckets whose id starts with `gemini-4-hydrogen` form their own `Gemini 4 Hydrogen` group per window (the lowest `remainingFraction` of the tiers), so they neither split the shared `Gemini` row nor fall into the Argon group; a summary group named for Hydrogen does not hide per-model Gemini buckets. Real Hydrogen bucket ids, group names and windows are unknown (hermetic fixtures only).
+- Media (`src/media.ts`, `src/image.ts`, `src/search.ts`): the only Argon special case is `media.ts` `resolveUpstreamModelSlug` (`gemini-4-argon` → `gemini-4-argon-medium`). Hydrogen is not a default media, image or search model; no evidence that it accepts media-understanding requests, so nothing was changed. A user who sets `antigravity/gemini-4-hydrogen` as a media model would send the bare id upstream (unverified result).
+- Orchestrator verdict: **not published**. The Decision requires `fetchAvailableModels` fields (modality, `disabled`, quota) that prove an ordinary, enabled, user-selectable chat model. Recorded facts are only the slug `gemini-pro-orchestrator-g1-pro` and the display name `Orchestrator (Argon)`; its `modality`, `disabled`, `quotaInfo` and `supports*` values are not recorded (no live dump allowed, not in agy's static protos). The display name and the agy 1.5.9 `run_workflow` changelog suggest an internal subagent orchestrator (unverified). It is filtered by `UNPUBLISHED_UPSTREAM_ID_PATTERNS` (`/^gemini-pro-orchestrator-/`), so a configured `antigravity/gemini-pro-orchestrator-g1-pro` fails with `unknown model` before any call. Revisit when a redacted field record exists.
 
 ## Model reasoning display
 

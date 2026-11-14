@@ -132,6 +132,38 @@ Adopted with `npm run sync:upstream:apply -- --json --investigated=25`: plugin `
 
 Live integration: **NOT RUN**; no new account-probe authorization assumed. A passing new-identity smoke remains required before merge.
 
+## agy 1.5.9 (2026-11-14)
+
+Adoption of agy 1.5.9 from baseline 1.5.3, issue [#38](https://github.com/predator-1/openclaw-antigravity-oauth/issues/38); covers 1.5.4–1.5.9. Evidence: `agy --version` = `1.5.9` (`~/.local/bin/agy`, linux-x64 ELF, SHA-256 `39816d49d5ab92229952987225c23ea3fed7580699dcb4a444e0388e0ac1ce43`); dry `npm run sync:upstream -- --json` on `main` `844dea5` returned verdict 20 `REVIEW_NEEDED`; GitHub latest release `1.5.9` (`equal`).
+
+Changed fingerprint fields: `cliVersion` `1.5.3` → `1.5.9`; `latestChangelog` (1.5.3 → 1.5.9 text); `models` gained `gemini-4-hydrogen-{low,medium,high,xhigh}` and `gemini-pro-orchestrator-g1-pro` (handled by #37, see [features.md](features.md#gemini-4-hydrogen-and-the-orchestrator-model)), none removed; `googleHosts.other` gained `iam.googleapis.com`. Unchanged: `googleHosts.used` (`daily-cloudcode-pa`, `oauth2`, `www`), `rpcNames`, `oauthClientPrefixes`, `consumerClientParity`, `oauthScopes`, `requestShapeMarkers`, `subcommands`.
+
+### `iam.googleapis.com`
+
+Not in #38's "Known" list (that re-run reported `googleHosts` unchanged). Static strings only: one hit sits in the string table between `sts.googleapis.com`, `aws region request` and `gdch token request` (Go Google auth library, external-account / workload-identity token exchange); one is the prefix `//iam.googleapis.com/`; two are the resource type `iam.googleapis.com/ServiceAccount`. That is ADC / service-account credential code (agy 1.5.5–1.5.8 extend `AGY_ADC_AUTH`). Unused host; the plugin's OAuth login and `src/` never call it. No plugin change.
+
+### Changelog review (`agy changelog`, 1.5.4–1.5.9 read in full, 95 bullets)
+
+Protocol-, auth-, schema- or routing-adjacent bullets:
+
+- 1.5.8: Gemini 4 Hydrogen (Low/Medium/High/XHigh) for `GEMINI_API_KEY`, ADC and enterprise gateway; Gemini 4 Carbon (Low/Medium/High) for `GEMINI_API_KEY`. Hydrogen also appears in this OAuth login's `agy models`; adopted by #37. Carbon (1.5.5 ADC, 1.5.8 API key) is not in `agy models` for this login and is not published.
+- 1.5.7: gateway Carbon requests now send a thinking level instead of a thinking budget and drop the `-low|-medium|-high` suffix. Gateway only; the plugin sends no `thinkingConfig` on pre-tiered ids (Argon, Hydrogen).
+- 1.5.8: switching from Gemini to a custom or admin-managed non-Gemini model (Claude) no longer fails with `Invalid signature in thinking block`. Gateway/admin models only; the plugin already keeps the signing model per tool call (`thoughtSignatureModel`, `src/turn.ts`).
+- 1.5.5: gateway Gemini-format requests no longer carry a non-standard `sessionId`. Gateway format only; `v1internal` request-shape markers are unchanged.
+- 1.5.6: gateway/admin custom Gemini models default to 65,535 output tokens (as built-in Gemini models); gateway models get native tool declarations; `supportsThoughtCirculation` admin option; 1.5.5 gateway URLs require `https://`; 1.5.8 `gateway.routeWebFetch`. Enterprise gateway only. The plugin uses upstream `maxOutputTokens` when present.
+- 1.5.8: HTTP/2 stale-connection retries; slow responses no longer time out after 60 s behind an admin proxy/CA. Go client transport; the plugin uses Node fetch ([agy 1.5.3](#agy-153-2026-11-07)).
+- Auth storage and sign-in: 1.5.9 `agy acp` falls back to the saved login; macOS Keychain failure falls back to file storage; MCP/plugin OAuth callback falls back to `[::1]`; 1.5.7 Windows sign-in callback listens on IPv4 and IPv6; 1.5.4 oversized stored sign-in repair and `Sign-in update needed` in `--remote-agent`; 1.5.6 ADC pay-as-you-go permission settings; 1.5.8 remote-MCP OAuth refresh sends the client id. All local credential storage or MCP auth; `oauthScopes`, `oauthClientPrefixes` and `consumerClientParity` are unchanged.
+- 1.5.9 `run_workflow` (Python workflow fanning out to subagents): client-side tool; the changelog names no model. Link to `gemini-pro-orchestrator-g1-pro` is **unverified**.
+- 1.5.4: Auto mode's review uses a lighter-thinking Gemini Flash model. Client-internal model choice; no new slug in `agy models`.
+
+No impact (client UI/TUI, local tools, hooks, plugins, swarms, sandbox/permissions, ACP editor protocol, Remote Control, Windows shell/editor, security fixes for MCP header redirects, sandbox proxy paths and Windows allow rules): the remaining bullets.
+
+Re-probe triggers: no speech, voice, dictation or TTS mention in 1.5.4–1.5.9 (#33 not triggered). Video: only 1.5.9 `/browser` session recordings are now `.mp4` from Chrome screen recording (local capture, not generation; #22 not triggered). Image: only 1.5.8 click-to-expand of a prompt's attached images (UI; no image-generation change). Hydrogen's video input is media understanding (#37), not generation.
+
+Verdict: no plugin code change and no gap issue. Adopted with `npm run sync:upstream:apply -- --json --investigated=38`: plugin `1.5.900`, CLI identity `1.5.9`; `applied:true` (verdict 20, investigated). Post-apply dry sync returned 0 `NO_CHANGE`. No OAuth client constants changed.
+
+Live integration (this Linux box, 2026-11-14): **not run** against upstream. One `node scripts/integration-smoke.js` invocation (default `--auth-source=openclaw`, no `--auth-source=agy`) stopped before any network request with `no Antigravity login found (auth source: openclaw)`: this box has no stored OpenClaw Antigravity login. No workaround; `~/.gemini` not read. A passing new-identity smoke remains required before merge.
+
 ## Request sanitization
 
 Upstream parses tool schemas into protobuf and rejects type arrays and unions with `400 INVALID_ARGUMENT: Proto field is not repeating, cannot start list`. `cleanJsonSchema` (applied to the v1internal envelope and to OpenAI-style `wireTools`):
